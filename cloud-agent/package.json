@@ -11,6 +11,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.3",
     "@hyperledger/fabric-gateway": "^1.10.0",
     "@veramo/core": "^6.0.0",
     "@veramo/core-types": "^6.0.0",
@@ -39,5 +40,4 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }
-  
 }
