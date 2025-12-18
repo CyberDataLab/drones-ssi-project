@@ -1,0 +1,43 @@
+{
+  "name": "cloud-agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@hyperledger/fabric-gateway": "^1.10.0",
+    "@veramo/core": "^6.0.0",
+    "@veramo/core-types": "^6.0.0",
+    "@veramo/credential-w3c": "^6.0.0",
+    "@veramo/data-store": "^6.0.0",
+    "@veramo/data-store-json": "^6.0.0",
+    "@veramo/did-comm": "^6.0.0",
+    "@veramo/did-manager": "^6.0.0",
+    "@veramo/did-provider-ethr": "^6.0.0",
+    "@veramo/did-provider-peer": "^6.0.0",
+    "@veramo/did-provider-web": "^6.0.0",
+    "@veramo/did-resolver": "^6.0.0",
+    "@veramo/key-manager": "^6.0.0",
+    "@veramo/kms-local": "^6.0.0",
+    "@veramo/kv-store": "^6.0.0",
+    "@veramo/mediation-manager": "^6.0.0",
+    "@veramo/remote-server": "^6.0.0",
+    "ethr-did-resolver": "^11.0.5",
+    "express": "^5.2.1",
+    "peer-did-resolver": "^2.0.0",
+    "sqlite3": "^5.1.7",
+    "web-did-resolver": "^2.0.32"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+  
+}
