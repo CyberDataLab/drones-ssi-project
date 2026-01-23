@@ -1,0 +1,31 @@
+{
+  "name": "tfm-ssi",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.10",
+    "nodemon": "^3.1.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@tfm/shared": "^1.0.0",
+    "@veramo/core": "^6.0.2",
+    "@veramo/credential-w3c": "^6.0.2",
+    "@veramo/data-store": "^6.0.2",
+    "@veramo/did-manager": "^6.0.2",
+    "@veramo/did-resolver": "^6.0.2",
+    "@veramo/key-manager": "^6.0.2",
+    "@veramo/message-handler": "^6.0.2",
+    "express": "^5.2.1",
+    "sqlite3": "^5.1.7",
+    "typeorm": "^0.3.28"
+  }
+}

@@ -1,2 +1,6 @@
 node_modules
 dist
+notes.txt
+*.sqlite
+drone-config.json
+*.csv

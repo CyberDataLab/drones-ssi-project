@@ -1,0 +1,20 @@
+{
+  "name": "@tfm/drone",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "NODE_NO_WARNINGS=1 ts-node src/index.ts",
+    "setup": "NODE_NO_WARNINGS=1 ts-node src/setup.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@tfm/shared": "file:../shared",
+    "@veramo/core": "^5.6.0",
+    "sqlite3": "^5.1.7",
+    "typeorm": "^0.3.28"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.30",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
