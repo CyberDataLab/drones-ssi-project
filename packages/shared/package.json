@@ -1,0 +1,33 @@
+{
+  "name": "@tfm/shared",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@veramo/core": "^5.6.0",
+    "@veramo/credential-w3c": "^5.6.0",
+    "@veramo/data-store": "^5.6.0",
+    "@veramo/did-comm": "^6.0.2",
+    "@veramo/did-manager": "^5.6.0",
+    "@veramo/did-provider-ethr": "^6.0.2",
+    "@veramo/did-provider-key": "^6.0.2",
+    "@veramo/did-provider-web": "^6.0.2",
+    "@veramo/did-resolver": "^5.6.0",
+    "@veramo/key-manager": "^5.6.0",
+    "@veramo/kms-local": "^6.0.2",
+    "@veramo/message-handler": "^5.6.0",
+    "did-resolver": "^4.1.0",
+    "ethr-did-resolver": "^11.0.5",
+    "key-did-resolver": "^4.0.0",
+    "sqlite3": "^5.1.7",
+    "typeorm": "^0.3.28",
+    "web-did-resolver": "^2.0.32"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
