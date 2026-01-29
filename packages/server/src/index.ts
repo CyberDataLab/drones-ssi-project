@@ -2,6 +2,7 @@ import { createSSIAgent } from '@tfm/shared'
 import express, { Request, Response } from 'express'
 import * as fs from 'fs'
 import * as path from 'path'
+import { BlockchainService } from './blockchain'
 
 async function main() {
   console.log('🖥️  Iniciando Servidor de IA (Verifier + Data Ingestion)...')
@@ -19,6 +20,17 @@ async function main() {
     console.log('📁 Nuevo dataset creado: drones-dataset.csv')
   }
 
+  // --- 2. INICIALIZACIÓN BLOCKCHAIN ---
+  const bcService = new BlockchainService()
+  try {
+      await bcService.connect()
+      console.log('✅ Conexión establecida con Hyperledger Fabric')
+  } catch (error) {
+      console.error('⚠️  ADVERTENCIA: No se pudo conectar a Blockchain (funcionando solo en local).')
+      // No hacemos process.exit() para que el servidor siga funcionando aunque la red caiga
+  }
+  // ------------------------------------
+
   try {
     const agent = await createSSIAgent(DB_FILE, SERVER_SECRET_KEY)
     
@@ -30,7 +42,7 @@ async function main() {
     
     console.log(`✅ Identidad del Servidor: ${serverIdentifier.did}`)
     console.log('---------------------------------------------------------')
-    console.log('💾 MODO DATASET: Los datos verificados se guardarán en CSV.')
+    console.log('💾 MODO DATASET: CSV (Local) + Blockchain (Distribuido)')
     console.log('---------------------------------------------------------')
 
     const app = express()
@@ -71,13 +83,34 @@ async function main() {
             const timestamp = body.timestamp || new Date().toISOString()
             const droneDid = message.from
 
-            // Formato CSV: timestamp,did,battery,altitude,temperature
+            // A. GUARDADO EN CSV (OFF-CHAIN)
             const csvLine = `${timestamp},${droneDid},${battery},${altitude},${temp}\n`
-
-            // Escribir en el archivo (Append)
             fs.appendFileSync(DATASET_FILE, csvLine)
-            
-            console.log(`✅ Dato Guardado: Batería ${battery}% | Alt ${altitude}m`)
+            console.log(`✅ Dato Guardado (CSV): Batería ${battery}% | Alt ${altitude}m`)
+
+            // B. GUARDADO EN BLOCKCHAIN (ON-CHAIN)
+            // Adaptamos los datos al contrato 'basic' que tenemos desplegado
+            // ID -> Un identificador único de transacción
+            // Color -> Usamos el string "Telemetry"
+            // Size -> Altitud
+            // Owner -> DID del Dron
+            // Value -> Batería
+            try {
+                const txId = `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+                
+                await bcService.createAsset(
+                    txId,
+                    "Telemetry",    // "Color"
+                    Math.round(altitude),       // "Size"
+                    droneDid || 'unknown',       // "Owner"
+                    Math.round(battery)         // "AppraisedValue"
+                )
+                console.log(`🔗 Dato Guardado (Fabric): TxID ${txId}`)
+            } catch (bcError) {
+                console.error('❌ Error escribiendo en Blockchain:', bcError)
+                // Nota: No fallamos la petición HTTP si la blockchain falla, 
+                // priorizamos la ingesta de datos, pero queda logueado el error.
+            }
             // ------------------------------------
             
             res.json({ status: 'saved', id: message.id })
