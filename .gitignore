@@ -1,6 +1,10 @@
 node_modules
 dist
+*.log
+
+
 notes.txt
 *.sqlite
 drone-config.json
 *.csv
+fabric-network/
