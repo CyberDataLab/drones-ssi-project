@@ -98,12 +98,14 @@ async function main() {
             try {
                 const txId = `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`
                 
-                await bcService.createAsset(
+                // ¡Adiós a los trucos! Enviamos los datos reales.
+                await bcService.createTelemetry(
                     txId,
-                    "Telemetry",    // "Color"
-                    Math.round(altitude),       // "Size"
-                    droneDid || 'unknown',       // "Owner"
-                    Math.round(battery)         // "AppraisedValue"
+                    timestamp,
+                    droneDid || 'unknown_did',
+                    battery,        // Int (ej: 98)
+                    altitude,       // Float (ej: 25.5) - ¡Ya funciona!
+                    temp            // Float (ej: 22.4)
                 )
                 console.log(`🔗 Dato Guardado (Fabric): TxID ${txId}`)
             } catch (bcError) {

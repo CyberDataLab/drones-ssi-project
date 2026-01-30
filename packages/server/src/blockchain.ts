@@ -5,22 +5,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TextDecoder } from 'util';
 
-// --- CONFIGURACIÓN DE RUTAS (Ajustadas a tu VM) ---
-// Asumimos que la estructura es:
-// /home/usuario/tfm-ssi/
-//    ├── packages/server
-//    └── fabric-network/fabric-samples/test-network
-
+// --- RUTAS DE LA RED (Ajustadas a tu VM) ---
 const mspId = 'Org1MSP';
 const cryptoPath = path.resolve(__dirname, '../../../fabric-network/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com');
+
+// Usamos ADMIN porque es más fiable en pruebas
 const keyDirectoryPath = path.resolve(cryptoPath, 'users/Admin@org1.example.com/msp/keystore');
-const certPath = path.resolve(cryptoPath, 'users/Admin@org1.example.com/msp/signcerts/cert.pem');
+const certPath = path.resolve(cryptoPath, 'users/Admin@org1.example.com/msp/signcerts/cert.pem'); 
+
 const tlsCertPath = path.resolve(cryptoPath, 'peers/peer0.org1.example.com/tls/ca.crt');
 const peerEndpoint = 'localhost:7051';
 const peerHostAlias = 'peer0.org1.example.com';
 
 const channelName = 'mychannel';
-const chaincodeName = 'basic'; // El contrato en GO se llama 'basic'
+const chaincodeName = 'drone'; // <--- CAMBIO IMPORTANTE: Nombre de TU contrato
 
 export class BlockchainService {
     private contract: Contract | undefined;
@@ -31,39 +29,32 @@ export class BlockchainService {
         console.log('🔗 Inicializando servicio Blockchain...');
     }
 
-    // 1. CONEXIÓN A LA RED
     public async connect() {
         try {
-            // Cargar certificado TLS raíz
             const rootCert = await fs.promises.readFile(tlsCertPath);
             const tlsCredentials = grpc.credentials.createSsl(rootCert);
 
-            // Crear cliente gRPC
             this.client = new grpc.Client(peerEndpoint, tlsCredentials, {
                 'grpc.ssl_target_name_override': peerHostAlias,
             });
 
-            // Cargar identidad (Certificado y Clave Privada)
             const id = await this.newIdentity();
             const signer = await this.newSigner();
 
-            // Conectar el Gateway
             this.gateway = connect({
                 client: this.client,
                 identity: id,
                 signer: signer,
-                // Opciones para asegurar que escucha eventos
                 evaluateOptions: () => { return { deadline: Date.now() + 5000 }; },
                 endorseOptions: () => { return { deadline: Date.now() + 15000 }; },
                 submitOptions: () => { return { deadline: Date.now() + 5000 }; },
                 commitStatusOptions: () => { return { deadline: Date.now() + 60000 }; },
             });
 
-            // Obtener el canal y el contrato
             const network = this.gateway.getNetwork(channelName);
             this.contract = network.getContract(chaincodeName);
 
-            console.log('✅ Conexión establecida con Hyperledger Fabric');
+            console.log(`✅ Conexión establecida con contrato '${chaincodeName}'`);
 
         } catch (error) {
             console.error('❌ Error conectando a Fabric:', error);
@@ -71,37 +62,35 @@ export class BlockchainService {
         }
     }
 
-    // 2. ESCRIBIR DATOS (Submit Transaction)
-    // Usamos los campos del ejemplo 'basic' (AssetTransfer) por ahora
-    public async createAsset(id: string, color: string, size: number, owner: string, value: number) {
+    // --- NUEVA FUNCIÓN ADAPTADA A TU CONTRATO ---
+    public async createTelemetry(txId: string, timestamp: string, droneDid: string, battery: number, altitude: number, temperature: number) {
         if (!this.contract) throw new Error('Contrato no inicializado');
 
-        console.log(`⚡ Enviando transacción: CreateAsset(${id})`);
+        console.log(`⚡ Enviando telemetría: ${txId}`);
         
+        // Fabric Gateway espera Strings, aunque tu contrato reciba numbers, la conversión es segura aquí
         await this.contract.submitTransaction(
-            'CreateAsset',
-            id,
-            color,
-            String(size),
-            owner,
-            String(value)
+            'CreateTelemetry', 
+            txId,
+            timestamp,
+            droneDid,
+            String(battery),
+            String(altitude),
+            String(temperature)
         );
         
         console.log('💾 Transacción guardada en el Ledger');
     }
 
-    // 3. LEER DATOS (Evaluate Transaction)
-    public async getAllAssets(): Promise<string> {
+    public async getAllTelemetry(): Promise<string> {
         if (!this.contract) throw new Error('Contrato no inicializado');
 
         console.log('🔍 Consultando Ledger...');
-        const resultBytes = await this.contract.evaluateTransaction('GetAllAssets');
+        const resultBytes = await this.contract.evaluateTransaction('GetAllTelemetry');
         
         const resultString = new TextDecoder().decode(resultBytes);
         return resultString;
     }
-
-    // --- FUNCIONES AUXILIARES (Criptografía) ---
 
     private async newIdentity(): Promise<Identity> {
         const credentials = await fs.promises.readFile(certPath);
@@ -109,7 +98,6 @@ export class BlockchainService {
     }
 
     private async newSigner(): Promise<Signer> {
-        // Buscamos la clave privada (el nombre del archivo cambia siempre)
         const files = await fs.promises.readdir(keyDirectoryPath);
         const keyPath = path.resolve(keyDirectoryPath, files[0]);
         const privateKeyPem = await fs.promises.readFile(keyPath);
