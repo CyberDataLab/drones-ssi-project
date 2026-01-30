@@ -127,6 +127,25 @@ async function main() {
       }
     })
 
+    // GET http://localhost:3000/history/<did>
+    app.get('/history/:did', async (req: Request, res: Response) => {
+        try {
+            const did = req.params.did as string;
+            // Como el DID suele contener caracteres raros (:) a veces viaja codificado.
+            // Decodificamos por si acaso, aunque Express suele manejarlo.
+            const decodedDid = decodeURIComponent(did);
+
+            const data = await bcService.getTelemetryByDid(decodedDid);
+            
+            // Convertimos el string JSON a objeto real para enviarlo bien formateado
+            const json = JSON.parse(data);
+            res.json(json);
+        } catch (error) {
+            console.error('❌ Error leyendo historial:', error);
+            res.status(500).send({ error: 'Error obteniendo datos de Blockchain' });
+        }
+    });
+
     app.listen(PORT, () => {
       console.log(`🚀 Listo en: http://localhost:${PORT}/messaging`)
     })

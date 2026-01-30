@@ -92,6 +92,19 @@ export class BlockchainService {
         return resultString;
     }
 
+    // Nueva función para filtrar por DID
+    public async getTelemetryByDid(droneDid: string): Promise<string> {
+        if (!this.contract) throw new Error('Contrato no inicializado');
+
+        console.log(`🔍 Buscando historial para: ${droneDid}`);
+        
+        // Llamamos a la función "QueryTelemetryByDid" que creamos en el contrato
+        const resultBytes = await this.contract.evaluateTransaction('QueryTelemetryByDid', droneDid);
+        
+        const resultString = new TextDecoder().decode(resultBytes);
+        return resultString;
+    }
+
     private async newIdentity(): Promise<Identity> {
         const credentials = await fs.promises.readFile(certPath);
         return { mspId, credentials };
