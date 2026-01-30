@@ -74,6 +74,34 @@ export class DroneContract extends Contract {
         }
         return JSON.stringify(allResults);
     }
+    @Transaction(false)
+    @Returns('string')
+    public async QueryTelemetryByDid(ctx: Context, droneDid: string): Promise<string> {
+        const allResults = [];
+        // Obtenemos todo el rango de datos
+        const iterator = await ctx.stub.getStateByRange('', '');
+        let result = await iterator.next();
+        
+        while (!result.done) {
+            const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
+            let record;
+            try {
+                record = JSON.parse(strValue);
+            } catch (err) {
+                console.log(err);
+                record = strValue;
+            }
+            
+            // FILTRO: Solo añadimos si el DID coincide
+            // Verificamos que sea un objeto y tenga la propiedad droneDid
+            if (typeof record === 'object' && record.droneDid === droneDid) {
+                allResults.push(record);
+            }
+            
+            result = await iterator.next();
+        }
+        return JSON.stringify(allResults);
+    }
 
     @Transaction(false)
     @Returns('boolean')
