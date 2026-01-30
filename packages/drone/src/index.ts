@@ -1,6 +1,9 @@
 import { createSSIAgent } from '@tfm/shared'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as https from 'https'
+
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Aceptar certificados autofirmados (solo para desarrollo)
 
 async function main() {
   console.log('🚁 Iniciando Agente Dron (Modo Autónomo)...')
@@ -73,11 +76,19 @@ async function main() {
         ? packedMessage.message 
         : JSON.stringify(packedMessage.message)
 
-    const response = await fetch('http://localhost:3000/messaging', {
+    
+    const httpsAgent = new https.Agent({
+      rejectUnauthorized: false, // Aceptar certificados autofirmados (solo para desarrollo)
+    });
+
+    console.log('🔐 Usando canal seguro HTTPS con el servidor.')
+
+    const response = await fetch('https://localhost:3000/messaging', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: messageToSend
-    })
+      body: messageToSend,
+      agent: httpsAgent
+    } as any)
 
     if (response.ok) {
       console.log('✅ ¡ÉXITO! Telemetría aceptada y registrada por el servidor.')

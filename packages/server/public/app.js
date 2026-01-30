@@ -61,7 +61,7 @@ function renderizarTabla(datos) {
                     </div>
                 </td>
                 <td>${dato.temperature} ºC</td>
-                <td><small class="text-muted font-monospace">${dato.txId.substring(0, 15)}...</small></td>
+                <td><small class="text-muted font-monospace">${dato.txId.substring(0, 100)}</small></td>
             </tr>
         `;
         tbody.innerHTML += fila;

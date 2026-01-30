@@ -1,8 +1,10 @@
 import { createSSIAgent } from '@tfm/shared'
+import { BlockchainService } from './blockchain'
 import express, { Request, Response } from 'express'
 import * as fs from 'fs'
 import * as path from 'path'
-import { BlockchainService } from './blockchain'
+import * as https from 'https'
+
 
 async function main() {
   console.log('🖥️  Iniciando Servidor de IA (Verifier + Data Ingestion)...')
@@ -147,9 +149,20 @@ async function main() {
         }
     });
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Listo en: http://localhost:${PORT}/messaging`)
-    })
+    // app.listen(PORT, () => {
+    //   console.log(`🚀 Listo en: http://localhost:${PORT}/messaging`)
+    // })
+
+    const httpsOptions = {
+      key: fs.readFileSync(path.join(__dirname, '../certs/server.key')),
+      cert: fs.readFileSync(path.join(__dirname, '../certs/server.cert'))
+    };
+
+    https.createServer(httpsOptions, app).listen(PORT, () => {
+      console.log(`\n🔒 SERVIDOR SEGURO (HTTPS) ACTIVO`);
+      console.log(`🚀 https://localhost:${PORT}`);
+      console.log(`📡 Esperando telemetría cifrada...`);
+  });
 
   } catch (error) {
     console.error('❌ Error fatal:', error)
