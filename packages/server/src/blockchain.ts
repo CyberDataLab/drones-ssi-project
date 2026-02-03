@@ -66,20 +66,32 @@ export class BlockchainService {
     public async createTelemetry(txId: string, timestamp: string, droneDid: string, battery: number, altitude: number, temperature: number) {
         if (!this.contract) throw new Error('Contrato no inicializado');
 
-        console.log(`⚡ Enviando telemetría: ${txId}`);
-        
-        // Fabric Gateway espera Strings, aunque tu contrato reciba numbers, la conversión es segura aquí
-        await this.contract.submitTransaction(
-            'CreateTelemetry', 
-            txId,
-            timestamp,
-            droneDid,
-            String(battery),
-            String(altitude),
-            String(temperature)
-        );
-        
-        console.log('💾 Transacción guardada en el Ledger');
+        try {
+            console.log(`⚡ Intentando submitTransaction para: ${txId}`);
+            
+            // IMPORTANTE: Verifica si en tu Chaincode la función se llama 
+            // 'CreateTelemetry' o 'CreateAsset'
+            await this.contract.submitTransaction(
+                'CreateTelemetry', 
+                txId,
+                timestamp,
+                droneDid,
+                battery.toString(),
+                altitude.toString(),
+                temperature.toString()
+            );
+            
+            console.log('✅ Transacción guardada exitosamente en el Ledger');
+        } catch (error: any) {
+            // Esto nos dirá el error REAL de Fabric (ej: "function not found" o "endorsement failure")
+            console.error('❌ Error detallado de Fabric Gateway:');
+            if (error.details && error.details.length > 0) {
+                console.error(`📝 Detalle: ${error.details[0].message}`);
+            } else {
+                console.error(error);
+            }
+            throw error; // Re-lanzamos para que el server.ts lo capture
+        }
     }
 
     public async getAllTelemetry(): Promise<string> {

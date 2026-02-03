@@ -5,7 +5,6 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as https from 'https'
 
-
 async function main() {
   console.log('🖥️  Iniciando Servidor de IA (Verifier + Data Ingestion)...')
 
@@ -14,31 +13,25 @@ async function main() {
   const PORT = 3000
 
   const droneDirectory = new Map<string, string>()
-  
-  // Archivo donde guardaremos el Dataset para la IA
   const DATASET_FILE = path.join(__dirname, '../drones-dataset.csv')
 
-  // Inicializamos el CSV con cabeceras si no existe
   if (!fs.existsSync(DATASET_FILE)) {
     fs.writeFileSync(DATASET_FILE, 'timestamp,did,battery,altitude,temperature\n')
     console.log('📁 Nuevo dataset creado: drones-dataset.csv')
   }
 
-  // --- 2. INICIALIZACIÓN BLOCKCHAIN ---
+  // --- 1. INICIALIZACIÓN BLOCKCHAIN ---
   const bcService = new BlockchainService()
   try {
       await bcService.connect()
       console.log('✅ Conexión establecida con Hyperledger Fabric')
   } catch (error) {
-      console.error('⚠️  ADVERTENCIA: No se pudo conectar a Blockchain (funcionando solo en local).')
-      // No hacemos process.exit() para que el servidor siga funcionando aunque la red caiga
+      console.error('⚠️  ADVERTENCIA: No se pudo conectar a Blockchain.')
   }
-  // ------------------------------------
 
   try {
     const agent = await createSSIAgent(DB_FILE, SERVER_SECRET_KEY)
     
-    // Identidad
     const existingDids = await agent.didManagerFind()
     let serverIdentifier = existingDids.length > 0 
       ? existingDids[0] 
@@ -46,145 +39,119 @@ async function main() {
     
     console.log(`✅ Identidad del Servidor: ${serverIdentifier.did}`)
     console.log('---------------------------------------------------------')
-    console.log('💾 MODO DATASET: CSV (Local) + Blockchain (Distribuido)')
-    console.log('---------------------------------------------------------')
 
     const app = express()
-    app.use(express.json()) 
     app.use(express.static(path.join(__dirname, '../public')))
 
-    app.post('/messaging', async (req: Request, res: Response) => {
+    // --- ENDPOINT DE MENSAJERÍA DIDCommV2 ---
+    app.post('/messaging', express.text({ type: '*/*' }), async (req: Request, res: Response) => {
       try {
-        // 1. Desencriptar
-        const message = await agent.handleMessage({
-          raw: JSON.stringify(req.body),
+        console.log('📩 Recibiendo sobre DIDCommV2...')
+
+        // console.log('--- MENSAJE RECIBIDO (RAW) ---')
+        // console.log(req.body)
+        // console.log('-------------------------------')
+
+        // 1. DESEMPAQUETAR
+        const unpacked = await agent.unpackDIDCommMessage({
+          message: req.body,
         })
 
-        // 2. Parsear Payload de forma segura
-        let payload = message.data as any
-        if (typeof payload === 'string') {
-            try { payload = JSON.parse(payload) } catch (e) {}
-        }
-        const body = payload.body || payload 
+        const droneDid = unpacked.message.from
+        const body = unpacked.message.body
         const credentials = body.verifiableCredential
 
-        // 3. Verificar Existencia de Credencial
         if (!credentials || credentials.length === 0) {
-           console.log('⛔ DENEGADO: Sin credenciales.')
            res.status(401).send('No credentials')
            return
         }
 
-        // 4. Verificar Validez Criptográfica
+        // 2. VERIFICAR LICENCIA
         const verificationResult = await agent.verifyCredential({
             credential: credentials[0]
         })
 
         if (verificationResult.verified === true) {
-            // --- AQUÍ EMPIEZA LA PERSISTENCIA ---
-            const battery = body.battery || 0
-            const altitude = body.altitude || 0
-            const temp = body.temperature || 0
-            const timestamp = body.timestamp || new Date().toISOString()
-            const droneDid = message.from
+            // Extraemos con valores por defecto para evitar 'undefined'
+            const battery = body.battery ?? 0;
+            const altitude = body.altitude ?? 0;
+            const temperature = body.temperature ?? body.temp ?? 0; // Aceptamos 'temperature' o 'temp'
+            const timestamp = body.timestamp ?? new Date().toISOString();
+            const ts = timestamp || new Date().toISOString()
 
-            // A. GUARDADO EN CSV (OFF-CHAIN)
-            const csvLine = `${timestamp},${droneDid},${battery},${altitude},${temp}\n`
+            // A. GUARDADO EN CSV
+            const csvLine = `${ts},${droneDid},${battery},${altitude},${temperature || 0}\n`
             fs.appendFileSync(DATASET_FILE, csvLine)
-            console.log(`✅ Dato Guardado (CSV): Batería ${battery}% | Alt ${altitude}m`)
+            console.log(`✅ [DIDComm] Verificado de: ${droneDid}`)
 
-            // B. GUARDADO EN BLOCKCHAIN (ON-CHAIN)
-            // Adaptamos los datos al contrato 'basic' que tenemos desplegado
-            // ID -> Un identificador único de transacción
-            // Color -> Usamos el string "Telemetry"
-            // Size -> Altitud
-            // Owner -> DID del Dron
-            // Value -> Batería
+            // B. GUARDADO EN BLOCKCHAIN
             try {
-                const txId = `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-                
-                // ¡Adiós a los trucos! Enviamos los datos reales.
+                const txId = `tx-${Date.now()}`
+                console.log(`Log: Guardando en Blockchain con ID ${txId}`)
+                console.log(`Datos: Batería ${battery}%, Altitud ${altitude}m, Temp ${temperature}°C`)
+                console.log(`Timestamp: ${ts}`)
+                console.log(`DID: ${droneDid}`)
                 await bcService.createTelemetry(
                     txId,
                     timestamp,
                     droneDid || 'unknown_did',
                     battery,        // Int (ej: 98)
                     altitude,       // Float (ej: 25.5) - ¡Ya funciona!
-                    temp            // Float (ej: 22.4)
+                    temperature            // Float (ej: 22.4)
                 )
-                console.log(`🔗 Dato Guardado (Fabric): TxID ${txId}`)
             } catch (bcError) {
-                console.error('❌ Error escribiendo en Blockchain:', bcError)
-                // Nota: No fallamos la petición HTTP si la blockchain falla, 
-                // priorizamos la ingesta de datos, pero queda logueado el error.
+                console.error('❌ Error en Blockchain')
             }
-            // ------------------------------------
             
-            res.json({ status: 'saved', id: message.id })
+            res.json({ status: 'decrypted_verified_and_saved' })
         } else {
-            console.log('❌ LICENCIA INVÁLIDA.')
             res.status(403).send('Invalid Credential')
         }
 
       } catch (error) {
-        console.error('❌ Error:', error)
-        res.status(500).send('Error')
+        console.error('❌ Error DIDComm:', error)
+        res.status(500).send('Error decrypting message')
       }
     })
 
-    // GET http://localhost:3000/history/<did>
-    app.get('/history/:did', async (req: Request, res: Response) => {
-        try {
-            const did = req.params.did as string;
-            // Como el DID suele contener caracteres raros (:) a veces viaja codificado.
-            // Decodificamos por si acaso, aunque Express suele manejarlo.
-            const decodedDid = decodeURIComponent(did);
-
-            const data = await bcService.getTelemetryByDid(decodedDid);
-            
-            // Convertimos el string JSON a objeto real para enviarlo bien formateado
-            const json = JSON.parse(data);
-            res.json(json);
-        } catch (error) {
-            console.error('❌ Error leyendo historial:', error);
-            res.status(500).send({ error: 'Error obteniendo datos de Blockchain' });
-        }
-    });
-
-    app.post('/directory', (req, res) => {
+    // --- DIRECTORIO DE DRONES ---
+    app.post('/directory', express.json(), (req: Request, res: Response) => {
       const { action, did, endpoint } = req.body;
-
       if (action === 'register') {
         droneDirectory.set(did, endpoint);
-        console.log(`📇 Dron registrado: ${did} en ${endpoint}`);
+        console.log(`📇 Registro: ${did} -> ${endpoint}`);
         return res.status(200).json({ status: 'registered' });
       }
-
       if (action === 'lookup') {
         const targetEndpoint = droneDirectory.get(did);
-        if (targetEndpoint) {
-          return res.status(200).json({ endpoint: targetEndpoint });
-        }
-        return res.status(404).json({ error: 'Dron no encontrado' });
+        return targetEndpoint 
+          ? res.status(200).json({ endpoint: targetEndpoint }) 
+          : res.status(404).json({ error: 'No encontrado' });
       }
-
       res.status(400).send('Acción no válida');
     });
 
-    // app.listen(PORT, () => {
-    //   console.log(`🚀 Listo en: http://localhost:${PORT}/messaging`)
-    // })
+    // --- HISTORIAL (CORREGIDO) ---
+    app.get('/history/:did', async (req: Request, res: Response) => {
+        try {
+            // CORRECCIÓN: Forzamos el tipo a string con 'as string'
+            const didParam = req.params.did as string;
+            const data = await bcService.getTelemetryByDid(decodeURIComponent(didParam));
+            res.json(JSON.parse(data));
+        } catch (error) {
+            res.status(500).send({ error: 'Error obteniendo datos' });
+        }
+    });
 
+    // --- HTTPS SERVER ---
     const httpsOptions = {
       key: fs.readFileSync(path.join(__dirname, '../certs/server.key')),
       cert: fs.readFileSync(path.join(__dirname, '../certs/server.cert'))
     };
 
-    https.createServer(httpsOptions, app).listen(PORT, () => {
-      console.log(`\n🔒 SERVIDOR SEGURO (HTTPS) ACTIVO`);
-      console.log(`🚀 https://0.0.0.0:${PORT}`);
-      console.log(`📡 Esperando telemetría cifrada...`);
-  });
+    https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
+      console.log(`\n🔒 SERVIDOR SEGURO (HTTPS) ACTIVO EN PUERTO ${PORT}`);
+    });
 
   } catch (error) {
     console.error('❌ Error fatal:', error)

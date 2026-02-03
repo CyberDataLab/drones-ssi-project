@@ -157,10 +157,11 @@ async function main() {
         body: { battery: 98, verifiableCredential: [myLicenseJwt] },
       }
       const packedServer = await agent.packDIDCommMessage({ packing: 'authcrypt', message: metricsData })
-      await fetch('https://127.0.0.1:3000/messaging', {
+
+      await fetch(`https://${SERVER_IP}:3000/messaging`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: typeof packedServer.message === 'string' ? packedServer.message : JSON.stringify(packedServer.message),
+        body: packedServer.message,
         agent: httpsAgent
       } as any)
 
