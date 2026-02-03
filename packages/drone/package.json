@@ -9,10 +9,12 @@
   "dependencies": {
     "@tfm/shared": "file:../shared",
     "@veramo/core": "^5.6.0",
+    "express": "^5.2.1",
     "sqlite3": "^5.1.7",
     "typeorm": "^0.3.28"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^20.19.30",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

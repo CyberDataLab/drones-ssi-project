@@ -12,6 +12,8 @@ async function main() {
   const SERVER_SECRET_KEY = '55555555cad1bd1a0fc4d9b75cd4d2990de535baf5caadfdf8d8f86664aa8555'
   const DB_FILE = 'server-database.sqlite'
   const PORT = 3000
+
+  const droneDirectory = new Map<string, string>()
   
   // Archivo donde guardaremos el Dataset para la IA
   const DATASET_FILE = path.join(__dirname, '../drones-dataset.csv')
@@ -149,6 +151,26 @@ async function main() {
         }
     });
 
+    app.post('/directory', (req, res) => {
+      const { action, did, endpoint } = req.body;
+
+      if (action === 'register') {
+        droneDirectory.set(did, endpoint);
+        console.log(`📇 Dron registrado: ${did} en ${endpoint}`);
+        return res.status(200).json({ status: 'registered' });
+      }
+
+      if (action === 'lookup') {
+        const targetEndpoint = droneDirectory.get(did);
+        if (targetEndpoint) {
+          return res.status(200).json({ endpoint: targetEndpoint });
+        }
+        return res.status(404).json({ error: 'Dron no encontrado' });
+      }
+
+      res.status(400).send('Acción no válida');
+    });
+
     // app.listen(PORT, () => {
     //   console.log(`🚀 Listo en: http://localhost:${PORT}/messaging`)
     // })
@@ -160,7 +182,7 @@ async function main() {
 
     https.createServer(httpsOptions, app).listen(PORT, () => {
       console.log(`\n🔒 SERVIDOR SEGURO (HTTPS) ACTIVO`);
-      console.log(`🚀 https://localhost:${PORT}`);
+      console.log(`🚀 https://0.0.0.0:${PORT}`);
       console.log(`📡 Esperando telemetría cifrada...`);
   });
 
