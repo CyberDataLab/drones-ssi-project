@@ -69,8 +69,6 @@ export class BlockchainService {
         try {
             console.log(`⚡ Intentando submitTransaction para: ${txId}`);
             
-            // IMPORTANTE: Verifica si en tu Chaincode la función se llama 
-            // 'CreateTelemetry' o 'CreateAsset'
             await this.contract.submitTransaction(
                 'CreateTelemetry', 
                 txId,
@@ -128,5 +126,22 @@ export class BlockchainService {
         const privateKeyPem = await fs.promises.readFile(keyPath);
         const privateKey = crypto.createPrivateKey(privateKeyPem);
         return signers.newPrivateKeySigner(privateKey);
+    }
+
+    public async getRegisteredDrones(): Promise<any[]> {
+        if (!this.contract) throw new Error('Contrato no inicializado');
+
+        console.log('🔍 Consultando Censo de Drones en Blockchain...');
+        
+        // Llamamos a la función que acabamos de probar en el CLI
+        const resultBytes = await this.contract.evaluateTransaction('GetRegisteredDrones');
+        
+        const resultString = new TextDecoder().decode(resultBytes);
+        try {
+            return JSON.parse(resultString);
+        } catch (e) {
+            console.error("Error parseando JSON de drones:", e);
+            return [];
+        }
     }
 }

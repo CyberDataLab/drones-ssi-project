@@ -142,6 +142,16 @@ async function main() {
             res.status(500).send({ error: 'Error obteniendo datos' });
         }
     });
+    // Devuelve la lista de nombres y DIDs registrados
+    app.get('/drones', async (req: Request, res: Response) => {
+        try {
+            const drones = await bcService.getRegisteredDrones();
+            res.json(drones);
+        } catch (error) {
+            console.error('❌ Error obteniendo drones:', error);
+            res.status(500).send({ error: 'Error de Blockchain' });
+        }
+    });
 
     // --- HTTPS SERVER ---
     const httpsOptions = {

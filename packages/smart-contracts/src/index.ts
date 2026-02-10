@@ -7,32 +7,32 @@ export class DroneContract extends Contract {
 
     @Transaction()
     public async InitLedger(ctx: Context): Promise<void> {
+        // CORRECCIÓN: Usamos una fecha FIJA para el génesis para evitar errores de determinismo
         const genesisData = {
             docType: 'telemetry',
             txId: 'genesis_tx',
-            timestamp: new Date().toISOString(),
+            timestamp: '2026-01-01T00:00:00Z', 
             droneDid: 'did:key:genesis',
             battery: 100,
             altitude: 0,
             temperature: 20.5
         };
-        // Convertimos a Buffer explícitamente
         await ctx.stub.putState(genesisData.txId, Buffer.from(stringify(sortKeysRecursive(genesisData))));
         console.log('Ledger inicializado con datos génesis');
     }
 
     @Transaction()
     public async CreateTelemetry(ctx: Context, txId: string, timestamp: string, droneDid: string, battery: number, altitude: number, temperature: number): Promise<void> {
+        // ID generado por el cliente (útil para búsquedas rápidas)
+        const recordId = txId; 
         
-        const exists = await this.TelemetryExists(ctx, txId);
-        if (exists) {
-            throw new Error(`El registro ${txId} ya existe`);
-        }
+        // ID REAL DE BLOCKCHAIN (La huella inmutable)
+        const blockchainTxId = ctx.stub.getTxID();
 
-        // CORRECCIÓN: Usamos un Objeto Plano (Plain Object), no una clase
         const telemetry = {
             docType: 'telemetry',
-            txId: txId,
+            id: recordId,            // ID lógico (ej: tx-12345)
+            txId: blockchainTxId,    // Huella criptográfica (ej: a1b2c3d4...)
             timestamp: timestamp,
             droneDid: droneDid,
             battery: battery,
@@ -40,8 +40,7 @@ export class DroneContract extends Contract {
             temperature: temperature
         };
 
-        // Guardamos
-        await ctx.stub.putState(txId, Buffer.from(stringify(sortKeysRecursive(telemetry))));
+        await ctx.stub.putState(recordId, Buffer.from(stringify(sortKeysRecursive(telemetry))));
     }
 
     @Transaction(false)
@@ -57,29 +56,28 @@ export class DroneContract extends Contract {
     @Returns('string')
     public async GetAllTelemetry(ctx: Context): Promise<string> {
         const allResults = [];
-        const iterator = await ctx.stub.getStateByRange('', '');
+        // CORRECCIÓN: Rango explícito para evitar problemas de búsqueda
+        const iterator = await ctx.stub.getStateByRange('', '\uFFFF');
         let result = await iterator.next();
         
         while (!result.done) {
             const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
-            let record;
             try {
-                record = JSON.parse(strValue);
+                const record = JSON.parse(strValue);
+                allResults.push(record);
             } catch (err) {
                 console.log(err);
-                record = strValue;
             }
-            allResults.push(record);
             result = await iterator.next();
         }
         return JSON.stringify(allResults);
     }
+
     @Transaction(false)
     @Returns('string')
     public async QueryTelemetryByDid(ctx: Context, droneDid: string): Promise<string> {
         const allResults = [];
-        // Obtenemos todo el rango de datos
-        const iterator = await ctx.stub.getStateByRange('', '');
+        const iterator = await ctx.stub.getStateByRange('', '\uFFFF');
         let result = await iterator.next();
         
         while (!result.done) {
@@ -89,15 +87,12 @@ export class DroneContract extends Contract {
                 record = JSON.parse(strValue);
             } catch (err) {
                 console.log(err);
-                record = strValue;
+                record = strValue; // En caso de error, guardamos el string crudo
             }
-            
-            // FILTRO: Solo añadimos si el DID coincide
-            // Verificamos que sea un objeto y tenga la propiedad droneDid
-            if (typeof record === 'object' && record.droneDid === droneDid) {
+
+            if (typeof record === 'object' && record.droneDid === droneDid && record.docType === 'telemetry') {
                 allResults.push(record);
             }
-            
             result = await iterator.next();
         }
         return JSON.stringify(allResults);
@@ -109,7 +104,51 @@ export class DroneContract extends Contract {
         const telemetryJSON = await ctx.stub.getState(txId);
         return telemetryJSON && telemetryJSON.length > 0;
     }
+
+    @Transaction()
+    public async RegisterDrone(ctx: Context, droneDid: string, friendlyName: string, timestamp: string): Promise<void> {
+        const key = droneDid; 
+        
+        // CAPTURAMOS LA HUELLA REAL
+        const blockchainTxId = ctx.stub.getTxID();
+
+        const droneEntry = {
+            docType: 'drone_registry',
+            txId: blockchainTxId,   
+            timestamp: timestamp, 
+            droneDid: droneDid,     // Guardamos el DID explícitamente
+            name: friendlyName,
+            battery: 0,
+            altitude: 0,
+            temperature: 0
+        };
+
+        await ctx.stub.putState(key, Buffer.from(stringify(sortKeysRecursive(droneEntry))));
+        console.info(`✅ Registro guardado. Huella: ${blockchainTxId}`);
+    }
+
+    @Transaction(false)
+    @Returns('string')
+    public async GetRegisteredDrones(ctx: Context): Promise<string> {
+        const allDrones = [];
+        const iterator = await ctx.stub.getStateByRange('', '\uFFFF'); 
+        let result = await iterator.next();
+
+        while (!result.done) {
+            const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
+            try {
+                const record = JSON.parse(strValue);
+                // Filtramos por docType
+                if (record.docType === 'drone_registry') {
+                    allDrones.push(record);
+                }
+            } catch (err) {
+                console.log(err);
+            }
+            result = await iterator.next();
+        }
+        return JSON.stringify(allDrones);
+    }
 }
 
-// Exportación obligatoria para que el contenedor arranque
 export const contracts: any[] = [ DroneContract ];
