@@ -172,4 +172,34 @@ export class BlockchainService {
         );
         console.log(`✅ Dron registrado exitosamente.`);
     }
+
+
+    // Revocar una credencial
+    public async revokeCredential(credentialId: string) {
+        if (!this.contract) throw new Error('Contrato no inicializado');
+        
+        console.log(`⛔ Revocando credencial: ${credentialId}`);
+        
+        // Generamos la fecha aquí (Cliente)
+        const timestamp = new Date().toISOString();
+
+        // La enviamos al contrato
+        await this.contract.submitTransaction(
+            'RevokeCredential', 
+            credentialId, 
+            timestamp
+        );
+        console.log(`✅ Revocación confirmada en Blockchain.`);
+    }
+
+    // Consultar estado
+    public async isRevoked(credentialId: string): Promise<boolean> {
+        if (!this.contract) throw new Error('Contrato no inicializado');
+        
+        const resultBytes = await this.contract.evaluateTransaction('IsCredentialRevoked', credentialId);
+        const resultString = new TextDecoder().decode(resultBytes);
+        
+        // El chaincode devuelve "true" o "false" como string
+        return resultString === 'true';
+    }
 }

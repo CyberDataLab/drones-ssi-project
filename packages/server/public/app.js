@@ -181,6 +181,20 @@ async function registrarDron() {
     }
 }
 
+async function revocarLicencia() {
+    const id = document.getElementById('revokeInput').value;
+    if(!id) return alert("Pon un ID");
+    
+    if(!confirm("¿Seguro que quieres revocar esta licencia? Es irreversible.")) return;
+
+    await fetch('/revoke', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ credentialId: id })
+    });
+    alert("Licencia Revocada. El dron ya no podrá volar.");
+}
+
 function getBatteryColor(level) {
     if (level > 60) return 'bg-success';
     if (level > 20) return 'bg-warning';

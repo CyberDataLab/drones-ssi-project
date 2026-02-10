@@ -190,6 +190,39 @@ export class DroneContract extends Contract {
         
         return JSON.stringify(allDrones);
     }
+
+    /**
+     * Revoca una credencial específica por su ID.
+     * @param credentialId El ID único de la VC (campo 'id' del JSON de la credencial)
+     */
+    @Transaction()
+    public async RevokeCredential(ctx: Context, credentialId: string, timestamp: string): Promise<void> {
+        const revocationKey = `REVOC_${credentialId}`;
+        
+        const revocationRecord = {
+            docType: 'revocation_list',
+            credentialId: credentialId,
+            revokedAt: timestamp, 
+            reason: 'Administrativa / Robo'
+        };
+
+        await ctx.stub.putState(revocationKey, Buffer.from(JSON.stringify(revocationRecord)));
+        console.info(`⛔ Credencial ${credentialId} revocada exitosamente.`);
+    }
+
+    /**
+     * Verifica si una credencial está revocada.
+     * Retorna TRUE si está revocada (NO válida), FALSE si está limpia.
+     */
+    @Transaction(false)
+    @Returns('boolean')
+    public async IsCredentialRevoked(ctx: Context, credentialId: string): Promise<boolean> {
+        const revocationKey = `REVOC_${credentialId}`;
+        const recordBytes = await ctx.stub.getState(revocationKey);
+        
+        // Si existe registro, es que está revocada
+        return (recordBytes && recordBytes.length > 0);
+    }
 }
 
 export const contracts: any[] = [ DroneContract ];
