@@ -144,4 +144,32 @@ export class BlockchainService {
             return [];
         }
     }
+
+    public async getAllDrones(): Promise<any[]> {
+        if (!this.contract) throw new Error('Contrato no inicializado');
+
+        console.log('🔍 Obteniendo censo global de drones...');
+        // Llamamos a la nueva función "Universal"
+        const resultBytes = await this.contract.evaluateTransaction('GetAllDronesInLedger');
+        
+        return JSON.parse(new TextDecoder().decode(resultBytes));
+    }
+
+    // Registra un nuevo dron en el Ledger
+    public async registerDrone(droneDid: string, name: string) {
+        if (!this.contract) throw new Error('Contrato no inicializado');
+
+        console.log(`📝 Registrando nuevo dron: ${name} (${droneDid})`);
+
+        // Usamos la fecha actual del servidor como timestamp determinista
+        const timestamp = new Date().toISOString();
+
+        await this.contract.submitTransaction(
+            'RegisterDrone',
+            droneDid,
+            name,
+            timestamp
+        );
+        console.log(`✅ Dron registrado exitosamente.`);
+    }
 }

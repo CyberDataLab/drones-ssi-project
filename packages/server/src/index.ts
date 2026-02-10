@@ -41,6 +41,7 @@ async function main() {
     console.log('---------------------------------------------------------')
 
     const app = express()
+    app.use(express.json())
     app.use(express.static(path.join(__dirname, '../public')))
 
     // --- ENDPOINT DE MENSAJERÍA DIDCommV2 ---
@@ -145,11 +146,27 @@ async function main() {
     // Devuelve la lista de nombres y DIDs registrados
     app.get('/drones', async (req: Request, res: Response) => {
         try {
-            const drones = await bcService.getRegisteredDrones();
+            const drones = await bcService.getAllDrones();
             res.json(drones);
         } catch (error) {
             console.error('❌ Error obteniendo drones:', error);
             res.status(500).send({ error: 'Error de Blockchain' });
+        }
+    });
+    app.post('/register', async (req, res) => {
+        try {
+            const { droneDid, name } = req.body;
+
+            if (!droneDid || !name) {
+                return res.status(400).json({ error: 'Faltan datos (DID o Nombre)' });
+            }
+
+            await bcService.registerDrone(droneDid, name);
+            res.json({ status: 'success', message: `Dron ${name} registrado` });
+
+        } catch (error) {
+            console.error('❌ Error registrando dron:', error);
+            res.status(500).json({ error: 'Error interno de Blockchain' });
         }
     });
 

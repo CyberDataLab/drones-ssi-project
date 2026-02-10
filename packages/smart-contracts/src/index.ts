@@ -149,6 +149,47 @@ export class DroneContract extends Contract {
         }
         return JSON.stringify(allDrones);
     }
+
+    /**
+     * Obtiene una lista unificada de TODOS los drones visibles en el Ledger,
+     * ya sean registrados o simples emisores anónimos de telemetría.
+     */
+    @Transaction(false)
+    @Returns('string')
+    public async GetAllDronesInLedger(ctx: Context): Promise<string> {
+        const droneMap = new Map<string, string>(); // Mapa DID -> Nombre
+
+        // 1. Primero, obtenemos los nombres registrados
+        const iterator = await ctx.stub.getStateByRange('', '');
+        let result = await iterator.next();
+
+        while (!result.done) {
+            const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
+            try {
+                const record = JSON.parse(strValue);
+
+                // A. Si es un registro de nombre, guardamos el nombre
+                if (record.docType === 'drone_registry') {
+                    droneMap.set(record.droneDid, record.name);
+                }
+                
+                // B. Si es telemetría, guardamos el DID (si no existe ya)
+                // Si ya tiene nombre (paso A), no lo sobrescribimos.
+                if (record.docType === 'telemetry') {
+                    if (!droneMap.has(record.droneDid)) {
+                        droneMap.set(record.droneDid, 'Dron Desconocido (Sin Registro)');
+                    }
+                }
+
+            } catch (err) {}
+            result = await iterator.next();
+        }
+
+        // Convertimos el mapa a array para devolverlo
+        const allDrones = Array.from(droneMap, ([did, name]) => ({ droneDid: did, name: name }));
+        
+        return JSON.stringify(allDrones);
+    }
 }
 
 export const contracts: any[] = [ DroneContract ];

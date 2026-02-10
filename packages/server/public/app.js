@@ -37,8 +37,15 @@ async function cargarFlotaDrones() {
         drones.forEach(dron => {
             const opcion = document.createElement('option');
             opcion.value = dron.droneDid; // El valor oculto es el DID
-            // El texto visible es el Nombre Amigable + trozo del DID
-            opcion.text = `${dron.name} (${dron.droneDid.substring(8, 20)}...)`;
+
+            // Si el nombre es "Dron Desconocido...", le ponemos un icono de alerta
+            if (dron.name.includes('Sin Registro')) {
+                opcion.text = `⚠️ ${dron.name} - ${dron.droneDid.substring(0, 15)}...`;
+                opcion.style.color = 'red'; // Opcional: destacarlo en rojo
+            } else {
+                opcion.text = `✅ ${dron.name} (${dron.droneDid.substring(0, 10)}...)`;
+            }
+            
             selector.appendChild(opcion);
         });
 
@@ -136,6 +143,42 @@ function renderizarTabla(datos) {
         `;
         tbody.innerHTML += fila;
     });
+}
+
+async function registrarDron() {
+    const name = document.getElementById('regName').value;
+    const did = document.getElementById('regDid').value;
+
+    if (!name || !did) {
+        alert("Por favor, rellena todos los campos");
+        return;
+    }
+
+    const btn = document.querySelector('#registroModal .btn-success');
+    const originalText = btn.innerText;
+    btn.innerText = "⏳ Escribiendo en Ledger...";
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ droneDid: did, name: name })
+        });
+
+        if (!response.ok) throw new Error("Error en el servidor");
+
+        alert(`✅ ¡Éxito! El dron "${name}" ha sido registrado en la Blockchain.`);
+        
+        // Recargar la página para ver el nuevo dron en la lista
+        location.reload();
+
+    } catch (error) {
+        console.error(error);
+        alert("❌ Error al registrar. Revisa la consola.");
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
 }
 
 function getBatteryColor(level) {
