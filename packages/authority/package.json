@@ -7,10 +7,12 @@
   },
   "dependencies": {
     "@tfm/shared": "*",
-    "@veramo/core": "^5.0.0"
+    "@veramo/core": "^5.0.0",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.30",
+    "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

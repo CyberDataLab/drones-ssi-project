@@ -154,7 +154,13 @@ async function main() {
         type: 'https://didcomm.org/drone-metrics/1.0/update',
         from: droneDID,
         to: [SERVER_DID],
-        body: { battery: 98, verifiableCredential: [myLicenseJwt] },
+        body: { 
+          battery: 98, 
+          altitude: 120.5,
+          temperature: 35.2,
+          timestamp : new Date().toISOString(),
+          verifiableCredential: [myLicenseJwt] 
+        },
       }
       const packedServer = await agent.packDIDCommMessage({ packing: 'authcrypt', message: metricsData })
 

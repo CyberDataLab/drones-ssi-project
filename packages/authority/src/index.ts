@@ -1,5 +1,6 @@
 import { createSSIAgent } from '@tfm/shared'
 import * as readline from 'readline'
+import { v4 as uuidv4 } from 'uuid' 
 
 // Función auxiliar para preguntar por consola
 function preguntar(pregunta: string): Promise<string> {
@@ -11,7 +12,7 @@ function preguntar(pregunta: string): Promise<string> {
   return new Promise((resolve) => {
     rl.question(pregunta, (respuesta) => {
       rl.close()
-      resolve(respuesta.trim()) // Quitamos espacios sobrantes por si acaso
+      resolve(respuesta.trim())
     })
   })
 }
@@ -23,10 +24,8 @@ async function main() {
   const DB_FILE = 'authority-database.sqlite'
 
   try {
-    // 1. Inicializamos el Agente
     const agent = await createSSIAgent(DB_FILE, AUTHORITY_SECRET)
 
-    // 2. Obtenemos la identidad de la Autoridad
     let authorityIdentifier = (await agent.didManagerFind())[0]
     
     if (!authorityIdentifier) {
@@ -39,8 +38,6 @@ async function main() {
     console.log(`✅ Autoridad Activa: ${authorityIdentifier.did}`)
     console.log('-------------------------------------------------------')
 
-    // 3. INTERACCIÓN CON EL USUARIO
-    // Aquí el script se pausa esperando a que pegues el DID
     const targetDID = await preguntar('👉 Por favor, introduce el DID del Dron (did:key:...): ')
 
     if (!targetDID || !targetDID.startsWith('did:')) {
@@ -50,12 +47,16 @@ async function main() {
 
     console.log(`\n⚙️  Generando licencia para: ${targetDID}...`)
 
+    // 2. GENERAMOS UN ID ÚNICO PARA ESTA LICENCIA
+    const licenseId = `urn:uuid:${uuidv4()}`;
+
     // 4. CREAR LA CREDENCIAL (VC)
     const verifiableCredential = await agent.createVerifiableCredential({
       credential: {
+        id: licenseId, 
         issuer: { id: authorityIdentifier.did },
         credentialSubject: {
-          id: targetDID,          // Usamos el DID que acabas de escribir
+          id: targetDID,
           type: 'DroneLicense',
           licenseClass: 'Class-A',
           expiryDate: '2030-01-01',
@@ -67,6 +68,7 @@ async function main() {
     })
 
     console.log('📜 ¡Credencial Creada y Firmada!')
+    console.log(`🔑 ID de Licencia: ${licenseId}`) // Mostramos el ID
     console.log('---------------------------------------------------')
     console.log(verifiableCredential.proof.jwt)
     console.log('---------------------------------------------------')
