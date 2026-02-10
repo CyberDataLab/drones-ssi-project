@@ -195,6 +195,42 @@ async function revocarLicencia() {
     alert("Licencia Revocada. El dron ya no podrá volar.");
 }
 
+async function cargarRevocaciones() {
+    const tbody = document.getElementById('tablaRevocaciones');
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center">⏳ Cargando datos del Ledger...</td></tr>';
+
+    try {
+        const response = await fetch('/revocations');
+        const lista = await response.json();
+
+        tbody.innerHTML = ''; // Limpiar
+
+        if (lista.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-success">✅ No hay licencias revocadas activas.</td></tr>';
+            return;
+        }
+
+        // Ordenar por fecha (más reciente arriba)
+        lista.sort((a, b) => new Date(b.revokedAt) - new Date(a.revokedAt));
+
+        lista.forEach(item => {
+            const fecha = new Date(item.revokedAt).toLocaleString();
+            const fila = `
+                <tr>
+                    <td>${fecha}</td>
+                    <td><code class="text-danger">${item.credentialId}</code></td>
+                    <td>${item.reason || 'No especificado'}</td>
+                </tr>
+            `;
+            tbody.innerHTML += fila;
+        });
+
+    } catch (error) {
+        console.error(error);
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">❌ Error conectando con servidor.</td></tr>';
+    }
+}
+
 function getBatteryColor(level) {
     if (level > 60) return 'bg-success';
     if (level > 20) return 'bg-warning';

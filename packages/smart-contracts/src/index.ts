@@ -223,6 +223,27 @@ export class DroneContract extends Contract {
         // Si existe registro, es que está revocada
         return (recordBytes && recordBytes.length > 0);
     }
+
+    @Transaction(false)
+    @Returns('string')
+    public async GetRevocationList(ctx: Context): Promise<string> {
+        const allResults = [];
+        const iterator = await ctx.stub.getStateByRange('', '');
+        let result = await iterator.next();
+
+        while (!result.done) {
+            const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
+            try {
+                const record = JSON.parse(strValue);
+                // Filtramos SOLO las revocaciones
+                if (record.docType === 'revocation_list') {
+                    allResults.push(record);
+                }
+            } catch (err) {}
+            result = await iterator.next();
+        }
+        return JSON.stringify(allResults);
+    }
 }
 
 export const contracts: any[] = [ DroneContract ];

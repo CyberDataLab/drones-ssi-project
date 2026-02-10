@@ -202,4 +202,13 @@ export class BlockchainService {
         // El chaincode devuelve "true" o "false" como string
         return resultString === 'true';
     }
+
+    public async getRevocationList(): Promise<any[]> {
+        if (!this.contract) throw new Error('Contrato no inicializado');
+        
+        console.log('🔍 Consultando Lista Negra en Blockchain...');
+        const resultBytes = await this.contract.evaluateTransaction('GetRevocationList');
+        
+        return JSON.parse(new TextDecoder().decode(resultBytes));
+    }
 }

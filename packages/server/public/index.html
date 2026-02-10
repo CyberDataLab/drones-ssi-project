@@ -5,63 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🚁 Drone SSI Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <style>
         body { background-color: #f8f9fa; }
         .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; }
-        .header-logo { font-size: 2.5rem; animation: float 3s ease-in-out infinite; }
+        
+        /* Animación del Logo */
+        .header-logo { font-size: 3rem; display: inline-block; animation: float 3s ease-in-out infinite; }
         @keyframes float {
             0% { transform: translateY(0px); }
             50% { transform: translateY(-10px); }
             100% { transform: translateY(0px); }
         }
+
+        /* Estilos para badges y textos técnicos */
         .badge-tx { font-family: monospace; font-size: 0.85em; cursor: help; }
+        .code-text { font-family: monospace; color: #d63384; }
     </style>
 </head>
 <body>
 
-<div class="container mt-5">
+<div class="container mt-5 mb-5">
+    
     <div class="text-center mb-5">
         <div class="header-logo">🚁</div>
         <h1 class="fw-bold">Auditoría de Drones (Blockchain)</h1>
-        <p class="text-muted">Verificación inmutable de identidad y telemetría vía Hyperledger Fabric</p>
+        <p class="text-muted">Verificación inmutable de identidad y telemetría vía Hyperledger Fabric & SSI</p>
     </div>
 
-    <div class="text-end mb-3">
+    <div class="d-flex justify-content-end mb-3 gap-2">
         <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#registroModal">
             ➕ Registrar Nuevo Dron
         </button>
-    </div>
-
-    <div class="modal fade" id="registroModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title">Alta de Nueva Unidad</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="formRegistro">
-                        <div class="mb-3">
-                            <label class="form-label">Nombre del Dron (Alias):</label>
-                            <input type="text" id="regName" class="form-control" placeholder="Ej: Unidad-Fénix-05" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">DID (Identidad Digital):</label>
-                            <input type="text" id="regDid" class="form-control" placeholder="did:key:z6Mk..." required>
-                            <div class="form-text">Copia el DID que genera el script del dron.</div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-success" onclick="registrarDron()">Guardar en Blockchain</button>
-                </div>
-            </div>
-        </div>
+        <button class="btn btn-dark" onclick="cargarRevocaciones()" data-bs-toggle="modal" data-bs-target="#revocacionesModal">
+            ⛔ Ver Lista Negra
+        </button>
     </div>
 
     <div class="row justify-content-center">
-        <div class="col-md-8">
+        <div class="col-md-10">
             <div class="card p-4 mb-4">
                 <div class="row g-3">
                     <div class="col-md-8">
@@ -70,7 +52,7 @@
                             <option value="" selected disabled>🔄 Conectando con Blockchain...</option>
                         </select>
                         <div class="form-text">
-                            Lista obtenida del "Drone Registry" del Smart Contract.
+                            Lista obtenida del Ledger. Los drones no registrados aparecen marcados con alerta.
                         </div>
                     </div>
                     <div class="col-md-4 d-flex align-items-end">
@@ -84,7 +66,7 @@
     </div>
 
     <div class="row justify-content-center" id="resultSection" style="display: none;">
-        <div class="col-md-10">
+        <div class="col-md-12">
             <div class="card p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h4 class="mb-0">📜 Historial de Vuelo (On-Chain)</h4>
@@ -97,9 +79,10 @@
                             <tr>
                                 <th>Fecha (Timestamp)</th>
                                 <th>Altitud</th>
-                                <th>Batería</th>
+                                <th style="width: 20%;">Batería</th>
                                 <th>Temp.</th>
-                                <th>DID del Dron</th> <th>Huella (TxID)</th>
+                                <th>DID del Dron</th>
+                                <th>Huella (TxID)</th>
                             </tr>
                         </thead>
                         <tbody id="tablaCuerpo">
@@ -109,19 +92,86 @@
             </div>
         </div>
     </div>
+
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-8">
+            <div class="card p-4 border-danger">
+                <h5 class="text-danger fw-bold">⚠️ Zona de Gestión de Incidencias</h5>
+                <label class="form-label">Revocar Licencia de Vuelo (Acción Irreversible):</label>
+                <div class="input-group">
+                    <input type="text" id="revokeInput" class="form-control" placeholder="ID de la Credencial (ej: urn:uuid:...)">
+                    <button class="btn btn-danger" onclick="revocarLicencia()">⛔ Revocar Licencia</button>
+                </div>
+                <div class="form-text text-danger">
+                    Al revocar, el servidor rechazará cualquier telemetría firmada con esta credencial.
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
-<div class="card p-4 mt-4 border-danger">
-    <h5 class="text-danger">Zona de Peligro: Revocación</h5>
-    <div class="input-group">
-        <input type="text" id="revokeInput" class="form-control" placeholder="ID de la Credencial (ej: urn:uuid:...)">
-        <button class="btn btn-danger" onclick="revocarLicencia()">⛔ Revocar Licencia</button>
+<div class="modal fade" id="registroModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Alta de Nueva Unidad</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formRegistro">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre del Dron (Alias):</label>
+                        <input type="text" id="regName" class="form-control" placeholder="Ej: Unidad-Fénix-05" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">DID (Identidad Digital):</label>
+                        <input type="text" id="regDid" class="form-control" placeholder="did:key:z6Mk..." required>
+                        <div class="form-text">Copia el DID que genera el script del dron.</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" onclick="registrarDron()">Guardar en Blockchain</button>
+            </div>
+        </div>
     </div>
-    <div class="form-text">El dron dejará de poder enviar datos inmediatamente.</div>
+</div>
+
+<div class="modal fade" id="revocacionesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-danger">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">⛔ Licencias Revocadas (Blockchain)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <small>Esta información se lee directamente del Ledger de Hyperledger Fabric.</small>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Fecha Revocación</th>
+                                <th>ID de Credencial</th>
+                                <th>Motivo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaRevocaciones">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
 <script src="app.js"></script>
 
 </body>

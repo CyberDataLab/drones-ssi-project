@@ -249,6 +249,17 @@ async function main() {
         }
     });
 
+    // GET /revocations - Devuelve la lista negra
+    app.get('/revocations', async (req: Request, res: Response) => {
+        try {
+            const list = await bcService.getRevocationList();
+            res.json(list);
+        } catch (error) {
+            console.error('❌ Error obteniendo revocaciones:', error);
+            res.status(500).json({ error: 'Error Blockchain' });
+        }
+    });
+
     // --- HTTPS SERVER ---
     const httpsOptions = {
       key: fs.readFileSync(path.join(__dirname, '../certs/server.key')),
