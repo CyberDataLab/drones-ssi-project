@@ -34,6 +34,9 @@
     </div>
 
     <div class="d-flex justify-content-end mb-3 gap-2">
+        <button class="btn btn-info text-white" data-bs-toggle="modal" data-bs-target="#usuarioModal">
+            👤 Nuevo Usuario
+        </button>
         <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#registroModal">
             ➕ Registrar Nuevo Dron
         </button>
@@ -141,7 +144,7 @@
 
 <div class="modal fade" id="revocacionesModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content border-danger">
+        <div class="modal-content border-dark">
             <div class="modal-header bg-dark text-white">
                 <h5 class="modal-title">⛔ Licencias Revocadas (Blockchain)</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -166,6 +169,43 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="usuarioModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content border-info">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">👤 Crear Nuevo Usuario</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formUsuario">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre de Usuario:</label>
+                        <input type="text" id="newUser" class="form-control" placeholder="Ej: auditor_madrid" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña:</label>
+                        <input type="password" id="newPass" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rol y Permisos:</label>
+                        <select id="newRole" class="form-select">
+                            <option value="auditor" selected>👁️ Auditor (Solo Lectura)</option>
+                            <option value="admin">🔑 Administrador (Control Total)</option>
+                        </select>
+                        <div class="form-text">
+                            <strong>Auditor:</strong> Solo puede ver el dashboard.<br>
+                            <strong>Administrador:</strong> Puede registrar drones, revocar licencias y crear usuarios.
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-info text-white" onclick="crearUsuario()">Crear Usuario</button>
             </div>
         </div>
     </div>

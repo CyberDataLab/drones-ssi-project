@@ -1,7 +1,48 @@
+const token = localStorage.getItem('token');
+const role = localStorage.getItem('role');
+
+if (!token){
+    window.location.href = '/login.html';
+}
+
+// 2. Configurar Fetch para enviar siempre el token
+const originalFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+    if (!options.headers) options.headers = {};
+    // Añadimos la cabecera Authorization
+    options.headers['Authorization'] = `Bearer ${token}`;
+    
+    // Interceptamos errores 401/403 (Token expirado)
+    return originalFetch(url, options).then(res => {
+        if (res.status === 401) {
+            alert("Sesión expirada. Vuelve a hacer login.");
+            logout();
+        }
+        return res;
+    });
+};
+
 // Esperamos a que el HTML cargue completamente
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 Dashboard Iniciado');
-
+    if (role !== 'admin') {
+        const botonesAdmin = document.querySelectorAll('.btn-success, .btn-danger, .btn-info, .border-danger');
+        botonesAdmin.forEach(btn => {
+            // // Eliminamos los botones de registro y revocar
+            // if(btn.innerText.includes('Registrar') || btn.innerText.includes('Revocar') || btn.innerText.includes('Lista Negra')) {
+            //     btn.style.display = 'none';
+            // }
+            btn.style.display = 'none';
+        });
+        
+        // Ocultar zona de peligro completa
+        const zonaPeligro = document.querySelector('.border-danger');
+        if(zonaPeligro) zonaPeligro.parentElement.parentElement.style.display = 'none';
+    }
+    
+    // Mostrar usuario logueado
+    const header = document.querySelector('.text-center p');
+    if(header) header.innerHTML += `<br><span class="badge bg-info text-dark">👤 ${localStorage.getItem('username')} (${role.toUpperCase()})</span> <a href="#" onclick="logout()" class="text-danger ms-2">Salir</a>`;
     // 1. CARGA AUTOMÁTICA: Llenar el desplegable consultando al servidor
     cargarFlotaDrones();
 
@@ -11,6 +52,64 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', buscarHistorial);
     }
 });
+
+function logout() {
+    localStorage.clear();
+    window.location.href = '/login.html';
+}
+
+async function crearUsuario() {
+    const username = document.getElementById('newUser').value;
+    const password = document.getElementById('newPass').value;
+    const role = document.getElementById('newRole').value;
+
+    if (!username || !password) {
+        alert("Por favor, rellena usuario y contraseña.");
+        return;
+    }
+
+    // Feedback visual (deshabilitar botón)
+    const btn = document.querySelector('#usuarioModal .btn-info');
+    const originalText = btn.innerText;
+    btn.innerText = "⏳ Creando...";
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                username: username, 
+                password: password, 
+                role: role 
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(`✅ ¡Éxito! Usuario "${username}" creado correctamente con rol ${role.toUpperCase()}.`);
+            
+            // Limpiar formulario y cerrar modal
+            document.getElementById('newUser').value = '';
+            document.getElementById('newPass').value = '';
+            // Truco para cerrar modal Bootstrap 5 sin jQuery
+            const modalEl = document.getElementById('usuarioModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            modal.hide();
+        } else {
+            alert(`❌ Error: ${data.error}`);
+        }
+
+    } catch (error) {
+        console.error(error);
+        alert("❌ Error de conexión con el servidor.");
+    } finally {
+        // Restaurar botón
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}
 
 /**
  * Consulta el endpoint /drones y rellena el <select>

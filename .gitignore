@@ -9,3 +9,5 @@ drone-config.json
 *.csv
 fabric-network/
 certs/*
+
+users.json

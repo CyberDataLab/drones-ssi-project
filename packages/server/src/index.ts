@@ -4,9 +4,60 @@ import express, { Request, Response } from 'express'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as https from 'https'
+import * as jwt from 'jsonwebtoken'
+import * as bcrypt from 'bcryptjs'
+
+
+const JWT_SECRET = 'secret-key-for-authentication'      // Change this in production. Use env vars or secure vaults.
+const USER_FILE = path.join(__dirname, '../users.json')
+
+interface User {
+    username: string;
+    passwordHash: string;
+    role: 'admin' | 'auditor';
+}
+
+function getUsers(): User[] {
+    if (!fs.existsSync(USER_FILE)) return [];
+    return JSON.parse(fs.readFileSync(USER_FILE, 'utf-8'))
+}
+
+async function initializeSystem(){
+    const users = getUsers();
+    if (users.length > 0) return;
+
+    console.log('🔐 No se encontraron usuarios. Creando usuario admin por defecto...');
+    const adminUser: User = {
+        username: 'admin',
+        passwordHash: await bcrypt.hash('admin', 10),
+        role: 'admin'
+    }
+    users.push(adminUser);
+    fs.writeFileSync(USER_FILE, JSON.stringify(users, null, 2))
+}
+
+const authenticateToken = (req: any, res: Response, next: any) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Token no proporcionado' });
+
+    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+        if (err) return res.status(403).json({ error: 'Token inválido' });
+        req.user = user;
+        next();
+    });
+}
+
+
+const requireAdmin = (req: any, res: Response, next: any) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acceso denegado: Solo administradores' });
+    next();
+}
+
 
 async function main() {
   console.log('🖥️  Iniciando Servidor de IA (Verifier + Data Ingestion)...')
+  await initializeSystem() // Aseguramos que el sistema tenga al menos un usuario admin
 
   const SERVER_SECRET_KEY = '55555555cad1bd1a0fc4d9b75cd4d2990de535baf5caadfdf8d8f86664aa8555'
   const DB_FILE = 'server-database.sqlite'
@@ -50,6 +101,29 @@ async function main() {
     
     // Middleware para archivos estáticos (Dashboard)
     app.use(express.static(path.join(__dirname, '../public')))
+
+    app.post('/auth/login', async (req: Request, res: Response) => {
+        const { username, password } = req.body;
+        const users = getUsers();
+        const user = users.find(u => u.username === username);
+        if (!user || !(await bcrypt.compare(password, user.passwordHash))) return res.status(401).json({ error: 'Credenciales mal' });
+        
+        const token = jwt.sign({ username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '2h' });
+        res.json({ token, role: user.role, username: user.username });
+    });
+
+    app.post('/auth/register', authenticateToken, requireAdmin, async (req: any, res: Response) => {
+        const { username, password, role } = req.body;
+        if (!username || !password) return res.status(400).json({ error: 'Faltan datos' });
+        
+        const users = getUsers();
+        if (users.find(u => u.username === username)) return res.status(400).json({ error: 'Existe usuario' });
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        users.push({ username, passwordHash: hashedPassword, role: role === 'admin' ? 'admin' : 'auditor' });
+        fs.writeFileSync(USER_FILE, JSON.stringify(users, null, 2));
+        res.json({ message: 'Usuario creado' });
+    });
 
     // --- ENDPOINT DE MENSAJERÍA DIDCommV2 (Recepción de Telemetría) ---
     app.post('/messaging', express.text({ type: '*/*' }), async (req: Request, res: Response) => {
@@ -165,9 +239,10 @@ async function main() {
         res.status(500).send('Internal Server Error');
       }
     })
+  
 
     // --- DIRECTORIO DE DRONES (Opcional, para búsquedas directas) ---
-    app.post('/directory', (req: Request, res: Response) => {
+    app.post('/directory', authenticateToken, (req: Request, res: Response) => {
       const { action, did, endpoint } = req.body;
       if (action === 'register') {
         droneDirectory.set(did, endpoint);
@@ -184,7 +259,7 @@ async function main() {
     });
 
     // --- OBTENER HISTORIAL DE VUELO (Lectura Blockchain) ---
-    app.get('/history/:did', async (req: Request, res: Response) => {
+    app.get('/history/:did', authenticateToken, async (req: Request, res: Response) => {
         try {
             const didParam = req.params.did as string;
             // Decodificamos el DID por si viene con caracteres especiales de URL
@@ -202,7 +277,7 @@ async function main() {
     });
 
     // --- OBTENER CENSO DE DRONES (Para el desplegable del Dashboard) ---
-    app.get('/drones', async (req: Request, res: Response) => {
+    app.get('/drones', authenticateToken, async (req: Request, res: Response) => {
         try {
             // Usamos la función getAllDrones (que llama a GetAllDronesInLedger en el contrato)
             const drones = await bcService.getAllDrones();
@@ -214,7 +289,7 @@ async function main() {
     });
 
     // --- REGISTRAR NUEVO DRON (Desde el botón "Registrar" del Dashboard) ---
-    app.post('/register', async (req: Request, res: Response) => {
+    app.post('/register', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
         try {
             const { droneDid, name } = req.body;
 
@@ -232,7 +307,7 @@ async function main() {
     });
 
     // --- REVOCAR CREDENCIAL (Zona de Peligro) ---
-    app.post('/revoke', async (req: Request, res: Response) => {
+    app.post('/revoke', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
         try {
             const { credentialId } = req.body;
             if (!credentialId) {
@@ -250,7 +325,7 @@ async function main() {
     });
 
     // GET /revocations - Devuelve la lista negra
-    app.get('/revocations', async (req: Request, res: Response) => {
+    app.get('/revocations', authenticateToken, async (req: Request, res: Response) => {
         try {
             const list = await bcService.getRevocationList();
             res.json(list);
