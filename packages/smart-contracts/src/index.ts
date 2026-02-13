@@ -2,37 +2,43 @@ import { Context, Contract, Info, Returns, Transaction } from 'fabric-contract-a
 import stringify from 'json-stringify-deterministic';
 import sortKeysRecursive from 'sort-keys-recursive';
 
-@Info({title: 'DroneTelemetry', description: 'Smart Contract para Trazabilidad de Drones'})
+@Info({title: 'DroneTelemetry', description: 'Smart Contract for managing drone telemetry data and registry'})
 export class DroneContract extends Contract {
 
     @Transaction()
     public async InitLedger(ctx: Context): Promise<void> {
-        // CORRECCIÓN: Usamos una fecha FIJA para el génesis para evitar errores de determinismo
         const genesisData = {
             docType: 'telemetry',
             txId: 'genesis_tx',
-            timestamp: '2026-01-01T00:00:00Z', 
+            timestamp: '2026-01-01T00:00:00Z', // Static timestamp for genesis block. This way we avoid any issues with non-deterministic timestamps during ledger initialization.
             droneDid: 'did:key:genesis',
             battery: 100,
             altitude: 0,
             temperature: 20.5
         };
         await ctx.stub.putState(genesisData.txId, Buffer.from(stringify(sortKeysRecursive(genesisData))));
-        console.log('Ledger inicializado con datos génesis');
+        console.log('Ledger initialized with genesis data');
     }
 
+    /**
+     * 
+     * @param ctx 
+     * @param txId 
+     * @param timestamp 
+     * @param droneDid 
+     * @param battery 
+     * @param altitude 
+     * @param temperature 
+     */
     @Transaction()
     public async CreateTelemetry(ctx: Context, txId: string, timestamp: string, droneDid: string, battery: number, altitude: number, temperature: number): Promise<void> {
-        // ID generado por el cliente (útil para búsquedas rápidas)
         const recordId = txId; 
-        
-        // ID REAL DE BLOCKCHAIN (La huella inmutable)
         const blockchainTxId = ctx.stub.getTxID();
 
         const telemetry = {
             docType: 'telemetry',
-            id: recordId,            // ID lógico (ej: tx-12345)
-            txId: blockchainTxId,    // Huella criptográfica (ej: a1b2c3d4...)
+            id: recordId,            
+            txId: blockchainTxId,    
             timestamp: timestamp,
             droneDid: droneDid,
             battery: battery,
@@ -43,20 +49,30 @@ export class DroneContract extends Contract {
         await ctx.stub.putState(recordId, Buffer.from(stringify(sortKeysRecursive(telemetry))));
     }
 
+    /**
+     * 
+     * @param ctx 
+     * @param txId 
+     * @returns 
+     */
     @Transaction(false)
     public async ReadTelemetry(ctx: Context, txId: string): Promise<string> {
         const telemetryJSON = await ctx.stub.getState(txId);
         if (!telemetryJSON || telemetryJSON.length === 0) {
-            throw new Error(`El registro ${txId} no existe`);
+            throw new Error(`The telemetry record ${txId} does not exist`);
         }
         return telemetryJSON.toString();
     }
 
+    /**
+     * 
+     * @param ctx 
+     * @returns 
+     */
     @Transaction(false)
     @Returns('string')
     public async GetAllTelemetry(ctx: Context): Promise<string> {
         const allResults = [];
-        // CORRECCIÓN: Rango explícito para evitar problemas de búsqueda
         const iterator = await ctx.stub.getStateByRange('', '\uFFFF');
         let result = await iterator.next();
         
@@ -73,6 +89,12 @@ export class DroneContract extends Contract {
         return JSON.stringify(allResults);
     }
 
+    /**
+     * 
+     * @param ctx 
+     * @param droneDid 
+     * @returns 
+     */
     @Transaction(false)
     @Returns('string')
     public async QueryTelemetryByDid(ctx: Context, droneDid: string): Promise<string> {
@@ -87,7 +109,7 @@ export class DroneContract extends Contract {
                 record = JSON.parse(strValue);
             } catch (err) {
                 console.log(err);
-                record = strValue; // En caso de error, guardamos el string crudo
+                record = strValue; 
             }
 
             if (typeof record === 'object' && record.droneDid === droneDid && record.docType === 'telemetry') {
@@ -98,6 +120,12 @@ export class DroneContract extends Contract {
         return JSON.stringify(allResults);
     }
 
+    /**
+     * 
+     * @param ctx 
+     * @param txId 
+     * @returns 
+     */
     @Transaction(false)
     @Returns('boolean')
     public async TelemetryExists(ctx: Context, txId: string): Promise<boolean> {
@@ -105,18 +133,22 @@ export class DroneContract extends Contract {
         return telemetryJSON && telemetryJSON.length > 0;
     }
 
+    /**
+     * 
+     * @param ctx 
+     * @param droneDid 
+     * @param friendlyName 
+     * @param timestamp 
+     */
     @Transaction()
     public async RegisterDrone(ctx: Context, droneDid: string, friendlyName: string, timestamp: string): Promise<void> {
         const key = droneDid; 
-        
-        // CAPTURAMOS LA HUELLA REAL
         const blockchainTxId = ctx.stub.getTxID();
-
         const droneEntry = {
             docType: 'drone_registry',
             txId: blockchainTxId,   
             timestamp: timestamp, 
-            droneDid: droneDid,     // Guardamos el DID explícitamente
+            droneDid: droneDid,     
             name: friendlyName,
             battery: 0,
             altitude: 0,
@@ -124,9 +156,14 @@ export class DroneContract extends Contract {
         };
 
         await ctx.stub.putState(key, Buffer.from(stringify(sortKeysRecursive(droneEntry))));
-        console.info(`✅ Registro guardado. Huella: ${blockchainTxId}`);
+        console.info(`✅ Registry saved. Fingerprint: ${blockchainTxId}`);
     }
 
+    /**
+     * 
+     * @param ctx 
+     * @returns 
+     */
     @Transaction(false)
     @Returns('string')
     public async GetRegisteredDrones(ctx: Context): Promise<string> {
@@ -138,7 +175,6 @@ export class DroneContract extends Contract {
             const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
             try {
                 const record = JSON.parse(strValue);
-                // Filtramos por docType
                 if (record.docType === 'drone_registry') {
                     allDrones.push(record);
                 }
@@ -151,15 +187,14 @@ export class DroneContract extends Contract {
     }
 
     /**
-     * Obtiene una lista unificada de TODOS los drones visibles en el Ledger,
-     * ya sean registrados o simples emisores anónimos de telemetría.
+     * 
+     * @param ctx 
+     * @returns 
      */
     @Transaction(false)
     @Returns('string')
     public async GetAllDronesInLedger(ctx: Context): Promise<string> {
-        const droneMap = new Map<string, string>(); // Mapa DID -> Nombre
-
-        // 1. Primero, obtenemos los nombres registrados
+        const droneMap = new Map<string, string>(); 
         const iterator = await ctx.stub.getStateByRange('', '');
         let result = await iterator.next();
 
@@ -168,16 +203,12 @@ export class DroneContract extends Contract {
             try {
                 const record = JSON.parse(strValue);
 
-                // A. Si es un registro de nombre, guardamos el nombre
                 if (record.docType === 'drone_registry') {
                     droneMap.set(record.droneDid, record.name);
                 }
-                
-                // B. Si es telemetría, guardamos el DID (si no existe ya)
-                // Si ya tiene nombre (paso A), no lo sobrescribimos.
                 if (record.docType === 'telemetry') {
                     if (!droneMap.has(record.droneDid)) {
-                        droneMap.set(record.droneDid, 'Dron Desconocido (Sin Registro)');
+                        droneMap.set(record.droneDid, 'Unknown Drone (Unregistered)');
                     }
                 }
 
@@ -185,15 +216,13 @@ export class DroneContract extends Contract {
             result = await iterator.next();
         }
 
-        // Convertimos el mapa a array para devolverlo
         const allDrones = Array.from(droneMap, ([did, name]) => ({ droneDid: did, name: name }));
-        
         return JSON.stringify(allDrones);
     }
 
     /**
-     * Revoca una credencial específica por su ID.
-     * @param credentialId El ID único de la VC (campo 'id' del JSON de la credencial)
+     * Revokes a specific credential by its ID.
+     * @param credentialId The unique ID of the VC (the "id" field in the VC JSON)
      */
     @Transaction()
     public async RevokeCredential(ctx: Context, credentialId: string, timestamp: string): Promise<void> {
@@ -203,27 +232,33 @@ export class DroneContract extends Contract {
             docType: 'revocation_list',
             credentialId: credentialId,
             revokedAt: timestamp, 
-            reason: 'Administrativa / Robo'
+            reason: 'Administrative / Theft / Compromise' // In a real implementation, you might want to allow specifying the reason for revocation
         };
 
         await ctx.stub.putState(revocationKey, Buffer.from(JSON.stringify(revocationRecord)));
-        console.info(`⛔ Credencial ${credentialId} revocada exitosamente.`);
+        console.info(`⛔ Credential ${credentialId} revoked.`);
     }
 
     /**
-     * Verifica si una credencial está revocada.
-     * Retorna TRUE si está revocada (NO válida), FALSE si está limpia.
+     * Verifies if a credential is revoked.
+     * Note: This function assumes that the credential ID is unique and corresponds to the "id" field in the VC JSON. In a real-world scenario, you might want to implement a more robust mapping between credentials and their revocation status.
+     * @param ctx 
+     * @param credentialId 
+     * @returns TRUE if revoked (invalid), FALSE if clean
      */
     @Transaction(false)
     @Returns('boolean')
     public async IsCredentialRevoked(ctx: Context, credentialId: string): Promise<boolean> {
         const revocationKey = `REVOC_${credentialId}`;
         const recordBytes = await ctx.stub.getState(revocationKey);
-        
-        // Si existe registro, es que está revocada
         return (recordBytes && recordBytes.length > 0);
     }
 
+    /**
+     * 
+     * @param ctx 
+     * @returns 
+     */
     @Transaction(false)
     @Returns('string')
     public async GetRevocationList(ctx: Context): Promise<string> {
@@ -235,7 +270,6 @@ export class DroneContract extends Contract {
             const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
             try {
                 const record = JSON.parse(strValue);
-                // Filtramos SOLO las revocaciones
                 if (record.docType === 'revocation_list') {
                     allResults.push(record);
                 }
@@ -246,4 +280,5 @@ export class DroneContract extends Contract {
     }
 }
 
+// Export the contract classes as an array for use in the chaincode
 export const contracts: any[] = [ DroneContract ];

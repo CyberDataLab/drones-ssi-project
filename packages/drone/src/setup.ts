@@ -18,73 +18,63 @@ function preguntar(pregunta: string): Promise<string> {
 }
 
 async function main() {
-  console.log('🛠️  INICIANDO CONFIGURACIÓN INICIAL DEL DRON')
+  console.log('🛠️  STARTING INITIAL DRONE CONFIGURATION')
   console.log('==========================================')
 
   try {
-    // 1. ARRANCAMOS EL AGENTE (Esto crea la base de datos si no existe)
-    console.log('⚙️  Inicializando sistema criptográfico...')
+    console.log('⚙️  Initializing SSI Agent...')
     const agent = await createSSIAgent(DB_FILE, SECRET_KEY)
 
-    // 2. OBTENER O CREAR IDENTIDAD (DID) AUTOMÁTICAMENTE
     const identifiers = await agent.didManagerFind()
     let droneDID: string
 
     if (identifiers.length === 0) {
-        console.log('✨ Generando nueva Identidad Digital (DID)...')
+        console.log('✨ Generating a new DID for the drone...')
         const newId = await agent.didManagerCreate({ alias: 'Dron-01', provider: 'did:key' })
         droneDID = newId.did
     } else {
         droneDID = identifiers[0].did
-        console.log('ℹ️  Identidad existente detectada.')
+        console.log('ℹ️  Existing Identity Found')
     }
 
-    // 3. MOSTRAR DID Y ESPERAR AL USUARIO
     console.log('\n-------------------------------------------------------------')
-    console.log('🤖 IDENTIDAD DEL DRON:')
+    console.log('🤖 IDENTITY:')
     console.log(`👉 ${droneDID}`)
     console.log('-------------------------------------------------------------')
-    console.log('📋 INSTRUCCIONES:')
-    console.log('1. Copia el DID de arriba.')
-    console.log('2. Ve a la terminal de la AUTORIDAD y genera una licencia para este DID.')
-    console.log('3. Vuelve aquí cuando tengas el JWT.')
+    console.log('📋 INSTRUCTIONS:')
+    console.log('1. Copy the DID above.')
+    console.log('2. Go to the Authority terminal and generate a license for this DID.')
+    console.log('3. Come back here when you have the JWT.')
     console.log('-------------------------------------------------------------\n')
 
-    // --- PAUSA: El script espera aquí a que tú hagas tus gestiones ---
     
-    // 4. PREGUNTAR SERVIDOR
-    const serverDid = await preguntar('📡 Paso 1: Introduce el DID del Servidor: ')
+    const serverDid = await preguntar('📡 Step 1: Enter the DID of the Server: ')
     if (!serverDid.startsWith('did:')) {
-        console.error('❌ Error: Formato de DID inválido.')
+        console.error('❌ Error: Invalid DID format.')
         return
     }
 
-    // 5. PREGUNTAR LICENCIA
-    const jwtInput = await preguntar('🎫 Paso 2: Pega la Licencia (JWT) generada: ')
+    const jwtInput = await preguntar('🎫 Step 2: Paste the generated License (JWT): ')
     if (!jwtInput) {
-        console.error('❌ Error: La licencia es obligatoria.')
+        console.error('❌ Error: The license is required.')
         return
     }
 
-    // 6. VALIDAR Y GUARDAR
-    console.log('\n💾 Guardando configuración...')
+    console.log('\n💾 Saving configuration...')
     
-    // Guardar Configuración JSON
     const config = { serverDid: serverDid }
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2))
 
-    // Validar y Guardar Credencial en DB
     const result = await agent.verifyCredential({ credential: jwtInput })
     if (result.verified) {
         await agent.dataStoreSaveVerifiableCredential({
             verifiableCredential: result.verifiableCredential
         })
-        console.log('✅ Licencia válida instalada.')
-        console.log('✅ Configuración del servidor guardada.')
-        console.log('\n🎉 ¡LISTO! Ejecuta "npx ts-node src/index.ts" para volar.')
+        console.log('✅ Valid license installed.')
+        console.log('✅ Server configuration saved.')
+        console.log('\n🎉 DONE! Run "npm start" to start the drone.')
     } else {
-        console.error('❌ La licencia NO es válida. Configuración abortada.')
-        // Borramos el config parcial para no dejar el dron en estado corrupto
+        console.error('❌ The license is not valid. Configuration aborted.')
         if (fs.existsSync(CONFIG_FILE)) fs.unlinkSync(CONFIG_FILE)
     }
 

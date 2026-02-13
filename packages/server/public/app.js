@@ -5,51 +5,40 @@ if (!token){
     window.location.href = '/login.html';
 }
 
-// 2. Configurar Fetch para enviar siempre el token
+
 const originalFetch = window.fetch;
 window.fetch = function(url, options = {}) {
     if (!options.headers) options.headers = {};
-    // Añadimos la cabecera Authorization
     options.headers['Authorization'] = `Bearer ${token}`;
     
-    // Interceptamos errores 401/403 (Token expirado)
     return originalFetch(url, options).then(res => {
         if (res.status === 401) {
-            alert("Sesión expirada. Vuelve a hacer login.");
+            alert("Session expired. Please log in again.");
             logout();
         }
         return res;
     });
 };
 
-// Esperamos a que el HTML cargue completamente
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Dashboard Iniciado');
+    console.log('🚀 Dashboard Started');
     if (role !== 'admin') {
-        const botonesAdmin = document.querySelectorAll('.btn-success, .btn-danger, .btn-info, .border-danger');
-        botonesAdmin.forEach(btn => {
-            // // Eliminamos los botones de registro y revocar
-            // if(btn.innerText.includes('Registrar') || btn.innerText.includes('Revocar') || btn.innerText.includes('Lista Negra')) {
-            //     btn.style.display = 'none';
-            // }
+        const buttonsAdmin = document.querySelectorAll('.btn-success, .btn-danger, .btn-info, .border-danger');
+        buttonsAdmin.forEach(btn => {
             btn.style.display = 'none';
         });
         
-        // Ocultar zona de peligro completa
-        const zonaPeligro = document.querySelector('.border-danger');
-        if(zonaPeligro) zonaPeligro.parentElement.parentElement.style.display = 'none';
+        const dangerZone = document.querySelector('.border-danger');
+        if(dangerZone) dangerZone.parentElement.parentElement.style.display = 'none';
     }
     
-    // Mostrar usuario logueado
     const header = document.querySelector('.text-center p');
-    if(header) header.innerHTML += `<br><span class="badge bg-info text-dark">👤 ${localStorage.getItem('username')} (${role.toUpperCase()})</span> <a href="#" onclick="logout()" class="text-danger ms-2">Salir</a>`;
-    // 1. CARGA AUTOMÁTICA: Llenar el desplegable consultando al servidor
-    cargarFlotaDrones();
+    if(header) header.innerHTML += `<br><span class="badge bg-info text-dark">👤 ${localStorage.getItem('username')} (${role.toUpperCase()})</span> <a href="#" onclick="logout()" class="text-danger ms-2">Logout</a>`;
+    loadDrones();
 
-    // 2. EVENTOS: Vincular botón de búsqueda
-    const btn = document.getElementById('btnBuscar');
+    const btn = document.getElementById('btnSearch');
     if (btn) {
-        btn.addEventListener('click', buscarHistorial);
+        btn.addEventListener('click', searchHistory);
     }
 });
 
@@ -58,20 +47,19 @@ function logout() {
     window.location.href = '/login.html';
 }
 
-async function crearUsuario() {
+async function createUser() {
     const username = document.getElementById('newUser').value;
     const password = document.getElementById('newPass').value;
     const role = document.getElementById('newRole').value;
 
     if (!username || !password) {
-        alert("Por favor, rellena usuario y contraseña.");
+        alert("Please enter your username and password.");
         return;
     }
 
-    // Feedback visual (deshabilitar botón)
-    const btn = document.querySelector('#usuarioModal .btn-info');
+    const btn = document.querySelector('#userModel .btn-info');
     const originalText = btn.innerText;
-    btn.innerText = "⏳ Creando...";
+    btn.innerText = "⏳ Creating...";
     btn.disabled = true;
 
     try {
@@ -88,13 +76,11 @@ async function crearUsuario() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(`✅ ¡Éxito! Usuario "${username}" creado correctamente con rol ${role.toUpperCase()}.`);
+            alert(`✅ Success! User "${username}" successfully created with role ${role.toUpperCase()}.`);
             
-            // Limpiar formulario y cerrar modal
             document.getElementById('newUser').value = '';
             document.getElementById('newPass').value = '';
-            // Truco para cerrar modal Bootstrap 5 sin jQuery
-            const modalEl = document.getElementById('usuarioModal');
+            const modalEl = document.getElementById('userModel');
             const modal = bootstrap.Modal.getInstance(modalEl);
             modal.hide();
         } else {
@@ -103,139 +89,123 @@ async function crearUsuario() {
 
     } catch (error) {
         console.error(error);
-        alert("❌ Error de conexión con el servidor.");
+        alert("❌ Connection error with the server.");
     } finally {
-        // Restaurar botón
         btn.innerText = originalText;
         btn.disabled = false;
     }
 }
 
-/**
- * Consulta el endpoint /drones y rellena el <select>
- */
-async function cargarFlotaDrones() {
+
+async function loadDrones() {
     const selector = document.getElementById('didSelect');
     
     try {
         const response = await fetch('/drones');
         
-        if (!response.ok) throw new Error("Error conectando con API de Drones");
+        if (!response.ok) throw new Error("Error connecting to Drones API");
         
         const drones = await response.json();
         
-        // Limpiamos el estado de "Cargando..."
-        selector.innerHTML = '<option value="" selected disabled>-- Selecciona un Dron --</option>';
+        selector.innerHTML = '<option value="" selected disabled>-- Select a Drone --</option>';
 
         if (!drones || drones.length === 0) {
-            selector.innerHTML += '<option disabled>⚠️ No se encontraron drones registrados</option>';
+            selector.innerHTML += '<option disabled>⚠️ No drones registered</option>';
             return;
         }
 
-        // Rellenamos el desplegable
         drones.forEach(dron => {
-            const opcion = document.createElement('option');
-            opcion.value = dron.droneDid; // El valor oculto es el DID
+            const option = document.createElement('option');
+            option.value = dron.droneDid; 
 
-            // Si el nombre es "Dron Desconocido...", le ponemos un icono de alerta
-            if (dron.name.includes('Sin Registro')) {
-                opcion.text = `⚠️ ${dron.name} - ${dron.droneDid.substring(0, 15)}...`;
-                opcion.style.color = 'red'; // Opcional: destacarlo en rojo
+            if (dron.name.includes('Unregistered')) {
+                option.text = `⚠️ ${dron.name} - ${dron.droneDid.substring(0, 15)}...`;
+                option.style.color = 'red'; 
             } else {
-                opcion.text = `✅ ${dron.name} (${dron.droneDid.substring(0, 10)}...)`;
+                option.text = `✅ ${dron.name} (${dron.droneDid.substring(0, 10)}...)`;
             }
             
-            selector.appendChild(opcion);
+            selector.appendChild(option);
         });
 
     } catch (error) {
-        console.error("Error cargando drones:", error);
-        selector.innerHTML = '<option disabled>❌ Error de conexión con Blockchain</option>';
+        console.error("Error loading drones:", error);
+        selector.innerHTML = '<option disabled>❌ Error connecting to Blockchain</option>';
     }
 }
 
-/**
- * Busca la telemetría del dron seleccionado
- */
-async function buscarHistorial() {
+
+async function searchHistory() {
     const selector = document.getElementById('didSelect');
-    const did = selector.value; // Obtenemos el DID de la opción seleccionada
+    const did = selector.value;
     
     if (!did) {
-        alert("⚠️ Por favor, selecciona un dron de la lista primero.");
+        alert("⚠️ Please select a drone from the list first.");
         return;
     }
 
-    // Codificamos el DID por seguridad para la URL
     const didEncoded = encodeURIComponent(did);
     
-    // UI: Mostrar estado de carga
     const resultSection = document.getElementById('resultSection');
-    const tbody = document.getElementById('tablaCuerpo');
+    const tbody = document.getElementById('bodyTable');
     
     resultSection.style.display = 'block';
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center p-5"><div class="spinner-border text-primary mb-2" role="status"></div><br>Descifrando datos del Ledger...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center p-5"><div class="spinner-border text-primary mb-2" role="status"></div><br>Decrypting Ledger data...</td></tr>';
 
     try {
         const response = await fetch(`/history/${didEncoded}`);
         
-        if (!response.ok) throw new Error("Error obteniendo historial");
+        if (!response.ok) throw new Error("Error fetching history data from server");
         
         const datos = await response.json();
-        renderizarTabla(datos);
+        renderTable(datos);
 
     } catch (error) {
         console.error(error);
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger fw-bold p-4">❌ Error recuperando datos. Verifica que el servidor está conectado a Fabric.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger fw-bold p-4">❌ Error retrieving data. Verify that the server is connected to Fabric.</td></tr>';
     }
 }
 
-/**
- * Pinta la tabla de resultados
- */
-function renderizarTabla(datos) {
-    const tbody = document.getElementById('tablaCuerpo');
+
+function renderTable(data) {
+    const tbody = document.getElementById('bodyTable');
     tbody.innerHTML = ''; 
 
-    if (!datos || datos.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center p-4 text-muted">⚠️ No hay registros de vuelo para este criterio.</td></tr>';
+    if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center p-4 text-muted">⚠️ There are no flight records for this criterion.</td></tr>';
         return;
     }
 
-    // Ordenar: más reciente primero
-    datos.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-    datos.forEach(dato => {
-        const altitud = dato.altitude ? parseFloat(dato.altitude).toFixed(2) : "0.00";
-        const temp = dato.temperature ? parseFloat(dato.temperature).toFixed(1) : "0.0";
-        const bateria = dato.battery || 0;
+    data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    data.forEach(data => {
+        const altitude = data.altitude ? parseFloat(data.altitude).toFixed(2) : "0.00";
+        const temp = data.temperature ? parseFloat(data.temperature).toFixed(1) : "0.0";
+        const battery = data.battery || 0;
         
-        // DID corto para que no ocupe mucho
-        const didCorto = dato.droneDid ? dato.droneDid.substring(8, 20) + '...' : 'Desconocido';
+        const didShort = data.droneDid ? data.droneDid.substring(8, 20) + '...' : 'Uknown';
         
-        // TxID (Huella Blockchain)
-        const txId = dato.txId || 'N/A';
-        const txIdCorto = txId.substring(0, 10) + '...';
+        const txId = data.txId || 'N/A';
+        const txIdShort = txId.substring(0, 10) + '...';
 
         const fila = `
             <tr>
-                <td>${new Date(dato.timestamp).toLocaleString()}</td>
-                <td class="fw-bold text-primary">${altitud} m</td>
+                <td>${new Date(data.timestamp).toLocaleString()}</td>
+                <td class="fw-bold text-primary">${altitude} m</td>
                 <td>
                     <div class="d-flex align-items-center">
                         <div class="progress flex-grow-1" style="height: 10px;">
-                            <div class="progress-bar ${getBatteryColor(bateria)}" role="progressbar" style="width: ${bateria}%"></div>
+                            <div class="progress-bar ${getBatteryColor(battery)}" role="progressbar" style="width: ${battery}%"></div>
                         </div>
-                        <span class="ms-2 small">${bateria}%</span>
+                        <span class="ms-2 small">${battery}%</span>
                     </div>
                 </td>
                 <td>${temp} ºC</td>
                 
-                <td><code class="text-secondary" title="${dato.droneDid}">${didCorto}</code></td>
+                <td><code class="text-secondary" title="${data.droneDid}">${didShort}</code></td>
                 
                 <td>
                     <a href="#" class="badge bg-dark text-decoration-none font-monospace" title="Huella completa: ${txId}">
-                        🔗 ${txIdCorto}
+                        🔗 ${txIdShort}
                     </a>
                 </td>
             </tr>
@@ -244,18 +214,18 @@ function renderizarTabla(datos) {
     });
 }
 
-async function registrarDron() {
+async function registerDrone() {
     const name = document.getElementById('regName').value;
     const did = document.getElementById('regDid').value;
 
     if (!name || !did) {
-        alert("Por favor, rellena todos los campos");
+        alert("Please fill in all fields.");
         return;
     }
 
-    const btn = document.querySelector('#registroModal .btn-success');
+    const btn = document.querySelector('#registerModal .btn-success');
     const originalText = btn.innerText;
-    btn.innerText = "⏳ Escribiendo en Ledger...";
+    btn.innerText = "⏳ Writing in Ledger...";
     btn.disabled = true;
 
     try {
@@ -265,68 +235,66 @@ async function registrarDron() {
             body: JSON.stringify({ droneDid: did, name: name })
         });
 
-        if (!response.ok) throw new Error("Error en el servidor");
+        if (!response.ok) throw new Error("Error in server response");
 
-        alert(`✅ ¡Éxito! El dron "${name}" ha sido registrado en la Blockchain.`);
+        alert(`✅ Success! The drone "${name}" has been registered on the Blockchain.`);
         
-        // Recargar la página para ver el nuevo dron en la lista
         location.reload();
 
     } catch (error) {
         console.error(error);
-        alert("❌ Error al registrar. Revisa la consola.");
+        alert("❌ Error registering drone. Check the console.");
         btn.innerText = originalText;
         btn.disabled = false;
     }
 }
 
-async function revocarLicencia() {
+async function revokeLicense() {
     const id = document.getElementById('revokeInput').value;
-    if(!id) return alert("Pon un ID");
+    if(!id) return alert("Please enter a credential ID");
     
-    if(!confirm("¿Seguro que quieres revocar esta licencia? Es irreversible.")) return;
+    if(!confirm("Are you sure you want to revoke this license? It is irreversible.")) return;
 
     await fetch('/revoke', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ credentialId: id })
     });
-    alert("Licencia Revocada. El dron ya no podrá volar.");
+    alert("License revoked. The drone can no longer fly.");
 }
 
-async function cargarRevocaciones() {
-    const tbody = document.getElementById('tablaRevocaciones');
-    tbody.innerHTML = '<tr><td colspan="3" class="text-center">⏳ Cargando datos del Ledger...</td></tr>';
+async function loadRevocations() {
+    const tbody = document.getElementById('tableRevocations');
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center">⏳ Loading Ledger data...</td></tr>';
 
     try {
         const response = await fetch('/revocations');
-        const lista = await response.json();
+        const list = await response.json();
 
-        tbody.innerHTML = ''; // Limpiar
+        tbody.innerHTML = ''; 
 
-        if (lista.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-success">✅ No hay licencias revocadas activas.</td></tr>';
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center text-success">✅ There are no active revoked licenses.</td></tr>';
             return;
         }
 
-        // Ordenar por fecha (más reciente arriba)
-        lista.sort((a, b) => new Date(b.revokedAt) - new Date(a.revokedAt));
+        list.sort((a, b) => new Date(b.revokedAt) - new Date(a.revokedAt));
 
-        lista.forEach(item => {
-            const fecha = new Date(item.revokedAt).toLocaleString();
-            const fila = `
+        list.forEach(item => {
+            const date = new Date(item.revokedAt).toLocaleString();
+            const row = `
                 <tr>
-                    <td>${fecha}</td>
+                    <td>${date}</td>
                     <td><code class="text-danger">${item.credentialId}</code></td>
-                    <td>${item.reason || 'No especificado'}</td>
+                    <td>${item.reason || 'No specified'}</td>
                 </tr>
             `;
-            tbody.innerHTML += fila;
+            tbody.innerHTML += row;
         });
 
     } catch (error) {
         console.error(error);
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">❌ Error conectando con servidor.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">❌ Error connecting with server.</td></tr>';
     }
 }
 

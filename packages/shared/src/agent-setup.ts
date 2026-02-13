@@ -12,13 +12,10 @@ import { getResolver as webDidResolver } from 'web-did-resolver'
 import { getResolver as keyDidResolver } from 'key-did-resolver'
 import { MessageHandler } from '@veramo/message-handler'
 import { DIDCommMessageHandler, DIDComm, IDIDComm } from '@veramo/did-comm'
-
-// 1. CORRECCIÓN: Importamos DataStoreORM y su interfaz IDataStoreORM
 import { Entities, KeyStore, DIDStore, PrivateKeyStore, DataStore, DataStoreORM, IDataStoreORM, migrations } from '@veramo/data-store' 
 import { CredentialPlugin } from '@veramo/credential-w3c'
 import { DataSource } from 'typeorm'
 
-// 2. CORRECCIÓN: Añadimos IDataStoreORM al tipo del agente
 export type TAgent = GenericAgent<IDIDManager & IKeyManager & IDataStore & IResolver & ICredentialPlugin & IMessageHandler & IDIDComm & IDataStoreORM>
 
 export async function createSSIAgent(dbName: string, secretKey: string): Promise<TAgent> {
@@ -64,13 +61,8 @@ export async function createSSIAgent(dbName: string, secretKey: string): Promise
           ...keyDidResolver(),
         }),
       }),
-      
-      // Plugin de Escritura
       new DataStore(dbConnection),
-      
-      // 3. CORRECCIÓN: Plugin de Lectura (ORM)
       new DataStoreORM(dbConnection),
-
       new CredentialPlugin(),
       new DIDComm(), 
       new MessageHandler({

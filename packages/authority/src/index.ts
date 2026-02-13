@@ -2,23 +2,23 @@ import { createSSIAgent } from '@tfm/shared'
 import * as readline from 'readline'
 import { v4 as uuidv4 } from 'uuid' 
 
-// Función auxiliar para preguntar por consola
-function preguntar(pregunta: string): Promise<string> {
+// Auxiliar function to read input from terminal
+function openTerminal(question: string): Promise<string> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   })
 
   return new Promise((resolve) => {
-    rl.question(pregunta, (respuesta) => {
+    rl.question(question, (answer) => {
       rl.close()
-      resolve(respuesta.trim())
+      resolve(answer.trim())
     })
   })
 }
 
 async function main() {
-  console.log('🏛️  Iniciando Autoridad de Certificación (Modo Interactivo)...')
+  console.log('🏛️  Starting Certification Authority (Interactive Mode)')
 
   const AUTHORITY_SECRET = '99999999cad1bd1a0fc4d9b75cd4d2990de535baf5caadfdf8d8f86664aa8999'
   const DB_FILE = 'authority-database.sqlite'
@@ -35,22 +35,22 @@ async function main() {
         })
     }
     
-    console.log(`✅ Autoridad Activa: ${authorityIdentifier.did}`)
+    console.log(`✅ Active Authority: ${authorityIdentifier.did}`)
     console.log('-------------------------------------------------------')
 
-    const targetDID = await preguntar('👉 Por favor, introduce el DID del Dron (did:key:...): ')
+    const targetDID = await openTerminal('👉 Please enter the drone DID (did:key:...): ')
 
     if (!targetDID || !targetDID.startsWith('did:')) {
-        console.error('❌ Error: El formato del DID no es válido.')
+        console.error('❌ Error: DID format not valid')
         return
     }
 
-    console.log(`\n⚙️  Generando licencia para: ${targetDID}...`)
+    console.log(`\n⚙️  Creating license for: ${targetDID}...`)
 
-    // 2. GENERAMOS UN ID ÚNICO PARA ESTA LICENCIA
+    // Generate a unique license ID using UUID
     const licenseId = `urn:uuid:${uuidv4()}`;
 
-    // 4. CREAR LA CREDENCIAL (VC)
+    // Create and sign the Verifiable Credential with the license information
     const verifiableCredential = await agent.createVerifiableCredential({
       credential: {
         id: licenseId, 
@@ -67,12 +67,12 @@ async function main() {
       save: true
     })
 
-    console.log('📜 ¡Credencial Creada y Firmada!')
-    console.log(`🔑 ID de Licencia: ${licenseId}`) // Mostramos el ID
+    console.log('📜 Credential Created and Signed!')
+    console.log(`🔑 License ID: ${licenseId}`) // Show the ID
     console.log('---------------------------------------------------')
     console.log(verifiableCredential.proof.jwt)
     console.log('---------------------------------------------------')
-    console.log('✅ Copia el JWT de arriba y úsalo en el script de instalación del dron.')
+    console.log('✅ Copy the JWT above and use it in the drone installation script.')
 
   } catch (error) {
     console.error('❌ Error:', error)
