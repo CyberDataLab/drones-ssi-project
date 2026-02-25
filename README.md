@@ -26,9 +26,17 @@ The project is organized as a monorepo with three main packages:
 
 ## ⚙️ 1. Installation
 
-Since this is a monorepo, you must install dependencies in a specific order. Open a terminal in the project root:
+Since this is a monorepo, you must install dependencies in a specific order.
 
-### Step A: Build the Shared Kernel
+### Step A: Install common dependencies
+
+In the project root:
+
+```bash
+npm install
+```
+
+### Step B: Build the Shared Kernel
 This is critical. The shared library must be built before the agents can run.
 
 ```bash
@@ -37,7 +45,7 @@ npm install
 npm run build
 ```
 
-### Step B: Install Agents
+### Step C: Install Agents
 Install dependencies for the three individual components:
 
 ```bash
