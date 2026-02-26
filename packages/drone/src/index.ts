@@ -4,6 +4,7 @@ import * as path from 'path'
 import * as https from 'https'
 import express from 'express'
 import * as readline from 'readline'
+import * as os from 'os'
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // This is needed to allow self-signed certificates in development. DO NOT USE IN PRODUCTION.
 
@@ -18,10 +19,30 @@ async function main() {
       console.error('❌ ERROR: Configuration file not found. Please run the setup script first.')
       process.exit(1)
   }
+
+  function getLocalIP() {
+    const interfaces = os.networkInterfaces();
+    const addresses: string[] = [];
+
+    for (const name of Object.keys(interfaces)) {
+      const iface = interfaces[name];
+      if (iface) {
+        for (const info of iface) {
+          if (info.family === 'IPv4' && !info.internal) {
+            addresses.push(info.address);
+          }
+        }
+      }
+    }
+    return addresses;
+  }
   
   const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'))
   const SERVER_DID = config.serverDid
   const SERVER_IP = '192.168.56.109'
+  const MY_IP = getLocalIP()[0]
+  console.log(`📡 Detected local IP: ${MY_IP}`)
+
   const P2P_PORT = parseInt(process.env.P2P_PORT || '40000')
 
   try {
@@ -51,15 +72,20 @@ async function main() {
     console.log(`🔑 License JWT: ${myLicenseJwt}`)
 
     async function registerInDirectory() {
-      const myEndpoint = `http://${SERVER_IP}:${P2P_PORT}/messaging`;
+      const myEndpoint = `http://${MY_IP}:${P2P_PORT}/messaging`;
       try {
-          await fetch(`https://${SERVER_IP}:3000/directory`, {
+          const response = await fetch(`https://${SERVER_IP}:3000/directory`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'register', did: droneDID, endpoint: myEndpoint }),
             agent: httpsAgent
           } as any);
-          console.log(`✅ Registered in directory: ${myEndpoint}`);
+
+          if (response.ok)
+            console.log(`✅ Registered in directory: ${myEndpoint}`);
+          else{
+            console.error('❌ Failed to register in directory. Is the server running? ', response.statusText);
+          }
       } catch (e) {
           console.error('❌ Error registering in directory: ', e);
       }
