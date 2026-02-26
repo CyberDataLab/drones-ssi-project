@@ -214,7 +214,7 @@ async function main() {
     })
   
 
-    app.post('/directory', authenticateToken, (req: Request, res: Response) => {
+    app.post('/directory', (req: Request, res: Response) => {
       const { action, did, endpoint } = req.body;
       if (action === 'register') {
         droneDirectory.set(did, endpoint);
