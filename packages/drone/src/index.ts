@@ -7,6 +7,10 @@ import * as readline from 'readline'
 import * as os from 'os'
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // This is needed to allow self-signed certificates in development. DO NOT USE IN PRODUCTION.
+let isConnectedToServer = false;
+let telemetryBuffer: any[] = [];
+let retryTelemetryInterval = 5000;
+let retryRegisterInterval = 5000;
 
 async function main() {
   console.log('🚁 Starting Drone Agent...')
@@ -81,13 +85,16 @@ async function main() {
             agent: httpsAgent
           } as any);
 
-          if (response.ok)
+          if (response.ok) {
             console.log(`✅ Registered in directory: ${myEndpoint}`);
-          else{
-            console.error('❌ Failed to register in directory. Is the server running? ', response.statusText);
+            isConnectedToServer = true;
+          } else{
+            throw new Error('Failed to register in directory: ' + response.statusText);
           }
       } catch (e) {
-          console.error('❌ Error registering in directory: ', e);
+          isConnectedToServer = false;
+          console.log(`\n❌ Error registering in directory, will retry in ${retryRegisterInterval} ms...`);
+          setTimeout(registerInDirectory, retryRegisterInterval)
       }
     }
     async function sendToPeer(peerDid: string, peerUrl: string) {
@@ -137,6 +144,78 @@ async function main() {
       }
     }
 
+    let simBattery = 100;
+    let simAltitude = 50;
+    let isSendingTelemetry = false;
+
+    function startTelemetryLoop() {
+      setInterval(async () => {
+        simBattery = Math.max(0, simBattery - 0.2); 
+        simAltitude = simAltitude + (Math.random() * 4 - 2); 
+
+        const metric = { 
+            battery: parseFloat(simBattery.toFixed(1)), 
+            altitude: parseFloat(simAltitude.toFixed(1)),
+            temperature: parseFloat((35 + Math.random()).toFixed(1)),
+            timestamp : new Date().toISOString(),
+            verifiableCredential: [myLicenseJwt] 
+        };
+
+        telemetryBuffer.push(metric);
+
+        if (!isConnectedToServer) {
+            console.log(`\n⚠️ Not connected to server, telemetry buffered: ${telemetryBuffer.length} items`);
+            return; 
+        }
+
+        if (!isConnectedToServer || telemetryBuffer.length === 0 || isSendingTelemetry) {
+            return; 
+        }
+        isSendingTelemetry = true;
+
+        try {
+            if (telemetryBuffer.length > 1) {
+                console.log(`📤 Sending ${telemetryBuffer.length} telemetry items`);
+            }
+            while (telemetryBuffer.length > 0) {
+                const item = telemetryBuffer[0]; 
+
+                const message = {
+                    id: 'msg-' + Date.now() + Math.random(),
+                    type: 'https://didcomm.org/drone-metrics/1.0/update',
+                    from: droneDID,
+                    to: [SERVER_DID],
+                    body: item
+                };
+                const packedServer = await agent.packDIDCommMessage({ packing: 'authcrypt', message });
+
+                const response = await fetch(`https://${SERVER_IP}:3000/messaging`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: packedServer.message,
+                    agent: httpsAgent
+                } as any);
+
+                if (response.ok) {
+                    telemetryBuffer.shift(); 
+                    console.log(`✅ Telemetry sent (Alt:${item.altitude}m, Bat:${item.battery}%). Remaining buffer: ${telemetryBuffer.length}`);
+                } else {
+                    throw new Error('Failed to send telemetry: ' + response.statusText);
+                }
+            }
+        } catch (e) {
+            console.error('❌ Error sending telemetry, Server disconnected. Will retry in next cycle.');
+            isConnectedToServer = false;
+
+            console.log(`📦 Telemetry buffer size: ${telemetryBuffer.length}`);
+
+            registerInDirectory();
+        } finally {
+            isSendingTelemetry = false;
+        }
+      }, retryTelemetryInterval);
+    }
+
     const app = express()
     app.use(express.text({ type: '*/*' }))
 
@@ -161,42 +240,30 @@ async function main() {
     })
 
     app.listen(P2P_PORT, '0.0.0.0', async () => {
-      console.log(`📡 P2P Server available on port ${P2P_PORT}`)
-      await registerInDirectory()
+      console.log(`🚀 Drone is listening for P2P messages on port ${P2P_PORT}`)
 
-      const metricsData = {
-        id: 'msg-' + Date.now(),
-        type: 'https://didcomm.org/drone-metrics/1.0/update',
-        from: droneDID,
-        to: [SERVER_DID],
-        body: { 
-          battery: 98, 
-          altitude: 120.5,
-          temperature: 35.2,
-          timestamp : new Date().toISOString(),
-          verifiableCredential: [myLicenseJwt] 
-        },
-      }
-      const packedServer = await agent.packDIDCommMessage({ packing: 'authcrypt', message: metricsData })
+      registerInDirectory();
 
-      await fetch(`https://${SERVER_IP}:3000/messaging`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: packedServer.message,
-        agent: httpsAgent
-      } as any)
+      startTelemetryLoop();
 
-      // Interfaz de comandos
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      })
       const menu = () => {
-        rl.question('\n📝 Paste the DID of another drone to communicate (or “exit”): ', async (input) => {
-          input = input.trim();
-          if (input === 'exit') process.exit(0);
-          if (input.startsWith('did:')) await talkToPeer(input);
-          menu();
+        rl.question('\nEnter target drone DID to share metrics (or "exit" to quit): ', async (answer) => {
+          if (answer.toLowerCase() === 'exit') {
+            console.log('👋 Exiting Drone Agent...')
+            rl.close()
+            process.exit(0)
+          } else {
+            await talkToPeer(answer.trim())
+            menu()
+          }
         });
-      };
-      menu();
+      }
+
+      setTimeout(menu, 1000);
     })
 
   } catch (error) {
