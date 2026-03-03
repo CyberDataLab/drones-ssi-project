@@ -11,3 +11,5 @@ fabric-network/
 certs/*
 
 users.json
+
+packages/authority/issued-licenses

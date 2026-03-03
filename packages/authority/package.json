@@ -6,11 +6,17 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@mattrglobal/bbs-signatures": "^2.0.0",
+    "@mattrglobal/jsonld-signatures-bbs": "^1.2.0",
     "@tfm/shared": "*",
     "@veramo/core": "^5.0.0",
-    "uuid": "^13.0.0"
+    "jsonld": "^9.0.0",
+    "jsonld-signatures": "^5.2.0",
+    "uuid": "^13.0.0",
+    "vc-js": "^0.6.4"
   },
   "devDependencies": {
+    "@types/jsonld": "^1.5.15",
     "@types/node": "^20.19.30",
     "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",

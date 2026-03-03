@@ -10,12 +10,15 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/jsonld": "^1.5.15",
     "@types/node": "^25.0.10",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@mattrglobal/bbs-signatures": "^2.0.0",
+    "@mattrglobal/jsonld-signatures-bbs": "^1.2.0",
     "@tfm/shared": "^1.0.0",
     "@veramo/core": "^6.0.2",
     "@veramo/credential-w3c": "^6.0.2",
@@ -25,6 +28,8 @@
     "@veramo/key-manager": "^6.0.2",
     "@veramo/message-handler": "^6.0.2",
     "express": "^5.2.1",
+    "jsonld": "^9.0.0",
+    "jsonld-signatures": "^5.2.0",
     "sqlite3": "^5.1.7",
     "typeorm": "^0.3.28"
   }
