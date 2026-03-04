@@ -1,0 +1,6 @@
+{
+  "id": "did:key:z6MkmXWnHfAsNphkBRwPHoZYhRcda5sdQcMV4JjggktMBCZy#bbs-key-1",
+  "type": "Bls12381G2Key2020",
+  "controller": "did:key:z6MkmXWnHfAsNphkBRwPHoZYhRcda5sdQcMV4JjggktMBCZy",
+  "publicKeyBase58": "21g6L3XY5McSgPsej9ccJRGQ3Xd9RQRgkijzPAkFAeJ1qUHkCdQEpvqFcNXtDPx61UUprDVXwGMLfkmCwXVCRgXobrxjmQ5LfrAbR64REsgyWWgtVJcYS7L7M1H9azbWTMoh"
+}
