@@ -181,6 +181,7 @@ async function main() {
 
     const contextCache = new Map();
 
+    // Preload important contexts to avoid network calls during critical operations like ZKP verification. This also allows us to inject custom contexts for the BBS+ suite and the drone license credential.
     contextCache.set("https://w3id.org/security/suites/jws-2020/v1", {
       contextUrl: null,
       documentUrl: "https://w3id.org/security/suites/jws-2020/v1",
@@ -235,7 +236,6 @@ async function main() {
         },
       },
     });
-    // 🚀 FIX: Precargamos el diccionario BBS+ oficial para evitar bloqueos de red
     contextCache.set("https://w3id.org/security/bbs/v1", {
       contextUrl: null,
       documentUrl: "https://w3id.org/security/bbs/v1",
@@ -362,32 +362,29 @@ async function main() {
         if (fs.existsSync(pubKeyPath)) {
           const authKey = JSON.parse(fs.readFileSync(pubKeyPath, "utf-8"));
 
-          // 1. Extraemos el string puro en Base58 (sin arrays raros)
           const keyString = authKey.publicKeyBase58 || authKey.publicKey;
 
-          // 2. Creamos la clave en el formato EXACTO que exige JSON-LD
+
           const cleanKey = {
             type: "Bls12381G2Key2020",
             controller: baseDid,
             publicKeyBase58: keyString,
           };
 
-          // 3. 🚨 EL FIX DEL FRANCOTIRADOR: Tu licencia busca el ID con "-1" al final
-          const keyId1 = `${baseDid}#bbs-key-1`; // El que pide tu licencia
-          const keyId2 = `${baseDid}#bbs-key`; // El original por si acaso
+
+          const keyId1 = `${baseDid}#bbs-key-1`;
+          const keyId2 = `${baseDid}#bbs-key`;
 
           if (!resolution.didDocument.verificationMethod)
             resolution.didDocument.verificationMethod = [];
           if (!resolution.didDocument.assertionMethod)
             resolution.didDocument.assertionMethod = [];
 
-          // Filtramos por si ya existían para evitar duplicados
           resolution.didDocument.verificationMethod =
             resolution.didDocument.verificationMethod.filter(
               (k: any) => k.id !== keyId1 && k.id !== keyId2,
             );
 
-          // Inyectamos la clave con los IDs correctos
           resolution.didDocument.verificationMethod.push({
             ...cleanKey,
             id: keyId1,
@@ -441,7 +438,7 @@ async function main() {
         cred.proof.verificationMethod = cred.proof.verificationMethod.id;
       }
 
-      // ✅ Frame JSON-LD puro: solo estructura, sin valores concretos
+
       const revealDocument = {
         "@context": cred["@context"],
         type: ["VerifiableCredential", "DroneLicense"],
@@ -449,11 +446,10 @@ async function main() {
         credentialSubject: {
           "@explicit": true,
           type: ["DroneLicense"],
-          authorizedArea: {}, // Revelamos solo el área autorizada
+          authorizedArea: {}, // Reveal only the authorizedArea property, which is what the server needs to know for authorization. The rest of the properties (like drone ID) are kept hidden in the ZKP.
         },
       };
 
-      // ✅ Nonce criptográficamente aleatorio
       const nonce = randomBytes(32);
 
       try {
@@ -705,8 +701,8 @@ async function main() {
       }, 5000);
     }
     startUDPRadar();
-    // registerInDirectory();
-    // startTelemetryLoop();
+    registerInDirectory();
+    startTelemetryLoop();
   } catch (error) {
     console.error("❌ Error: ", error);
   }
