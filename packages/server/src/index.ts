@@ -6,9 +6,15 @@ import * as path from 'path'
 import * as https from 'https'
 import * as jwt from 'jsonwebtoken'
 import * as bcrypt from 'bcryptjs'
-import { error } from 'console'
+import { BbsBlsSignature2020 } from '@mattrglobal/jsonld-signatures-bbs'
+// @ts-ignore
+import { extendContextLoader, purposes, verify } from 'jsonld-signatures'
 
 
+// Authority public Key
+const PUB_KEY_AUTHORITY = path.join(__dirname, '../authority_public_key/authority-public-key.json')
+
+// Dashboard credentials and configuration
 const JWT_SECRET = 'secret-key-for-authentication'      // Change this in production. Use env vars or secure vaults.
 const USER_FILE = path.join(__dirname, '../users.json')
 
@@ -91,6 +97,87 @@ async function main() {
     console.log(`✅ Server Identifier (DID): ${serverIdentifier.did}`)
     console.log('---------------------------------------------------------')
 
+
+    const contextCache = new Map();
+
+    contextCache.set('https://w3id.org/security/suites/jws-2020/v1', {
+        contextUrl: null,
+        documentUrl: 'https://w3id.org/security/suites/jws-2020/v1',
+        document: {
+            "@context": {
+                "id": "@id",
+                "type": "@type",
+                "JsonWebSignature2020": {
+                    "@id": "https://w3id.org/security#JsonWebSignature2020",
+                    "@context": {
+                        "@protected": true,
+                        "id": "@id",
+                        "type": "@type",
+                        "challenge": "https://w3id.org/security#challenge",
+                        "created": {"@id": "http://purl.org/dc/terms/created", "@type": "http://www.w3.org/2001/XMLSchema#dateTime"},
+                        "domain": "https://w3id.org/security#domain",
+                        "expires": {"@id": "https://w3id.org/security#expiration", "@type": "http://www.w3.org/2001/XMLSchema#dateTime"},
+                        "jws": "https://w3id.org/security#jws",
+                        "nonce": "https://w3id.org/security#nonce",
+                        "proofPurpose": {"@id": "https://w3id.org/security#proofPurpose", "@type": "@vocab", "@context": {"@protected": true, "id": "@id", "type": "@type", "assertionMethod": {"@id": "https://w3id.org/security#assertionMethod", "@type": "@id", "@container": "@set"}, "authentication": {"@id": "https://w3id.org/security#authenticationMethod", "@type": "@id", "@container": "@set"}}},
+                        "proofValue": "https://w3id.org/security#proofValue",
+                        "verificationMethod": {"@id": "https://w3id.org/security#verificationMethod", "@type": "@id"}
+                    }
+                }
+            }
+        }
+    });
+    
+    const customLoader = async (url: string) => {
+        if (contextCache.has(url)) return contextCache.get(url);
+
+        // If the library requests a DID to resolve its public key, we use Veramo to resolve it
+        if (url.startsWith('did:')) {
+            console.log(`🔍 [ZKP] Resolving public key for DID: ${url}`);
+            const baseDid = url.split('#')[0]; // Remove fragment if present, as Veramo resolves the base DID
+            const resolution = await agent.resolveDid({ didUrl: baseDid });
+            
+            if (!resolution || !resolution.didDocument) {
+                throw new Error(`Failed to resolve DID document for URL: ${url}`);
+            }
+
+            if (fs.existsSync(PUB_KEY_AUTHORITY)) {
+                const authorityPublicKey = JSON.parse(fs.readFileSync(PUB_KEY_AUTHORITY, 'utf-8'))
+
+                if (baseDid === authorityPublicKey.controller) {
+                    if (!resolution.didDocument.verificationMethod) resolution.didDocument.verificationMethod = [];
+                    if (!resolution.didDocument.assertionMethod) resolution.didDocument.assertionMethod = [];
+
+                    const exists = resolution.didDocument.verificationMethod.find((v: any) => v.id === authorityPublicKey.id);
+                    if (!exists) {
+                        resolution.didDocument.verificationMethod.push(authorityPublicKey);
+                        resolution.didDocument.assertionMethod.push(authorityPublicKey.id);
+                        console.log(`💉 [ZKP] Public key injected into DID document for controller: ${authorityPublicKey.controller}`);
+                    }
+                }
+            }
+
+            const result = {
+                contextUrl: null,
+                documentUrl: url,
+                document: resolution.didDocument
+            };
+            contextCache.set(url, result);
+            return result;
+        }
+
+        // For regular contexts, we fetch them as usual
+        const response = await fetch(url, {
+            headers: { 'Accept': 'application/ld+json, application/json' },
+            redirect: 'follow'
+        });
+        if (!response.ok) throw new Error(`Error HTTP ${response.status} downloading the context: ${url}`);
+        const result = { contextUrl: null, documentUrl: url, document: await response.json() };
+        contextCache.set(url, result);
+        return result;
+    };
+    const documentLoader = extendContextLoader(customLoader);
+
     const app = express()
     app.use(express.json())
     app.use(express.static(path.join(__dirname, '../public')))
@@ -139,77 +226,94 @@ async function main() {
 
         const targetCredential = credentials[0];
 
-        const verificationResult = await agent.verifyCredential({
-            credential: targetCredential
-        })
+        if (targetCredential.proof?.type !== 'BbsBlsSignature2020') {
+            console.warn(`⚠️  Unsupported credential proof type from DID: ${droneDid}. Expected BbsBlsSignature2020 but got ${targetCredential.proof?.type}`);
+            res.status(400).json({ error: 'unsupported_credential', message: 'Only BbsBlsSignature2020 credentials are accepted.' });
+            return;
+        }
 
-        if (verificationResult.verified === true) {
-            const credentialId = verificationResult.verifiableCredential.id; 
-            if (!credentialId) {
-              console.error(`⚠️ Error: The provided credential does not contain an ID field. This is required for revocation checks.`);
-                return res.status(400).json({ error: 'invalid_credential_structure', message: 'The credential does not have an ID field.' });
-            } else {
+        let isVerified = false;
+        try {
+            const verificationResult = await verify(targetCredential, {
+                suite: new BbsBlsSignature2020(),
+                purpose: new purposes.AssertionProofPurpose(),
+                documentLoader: documentLoader
+            });
+            isVerified = verificationResult.verified;
+            console.log(`🔍[DEBUG] Credential verification result for DID ${droneDid}: ${isVerified ? '✅ Verified' : '❌ Failed'}`);
+            
+            // DEBUG
+            if (!isVerified) {
+                if (verificationResult.error) {
+                    console.error(`❌ Verification error details for DID ${droneDid}:`, verificationResult.error);
+                }
+                if (verificationResult.results) {
+                    verificationResult.results.forEach((result: any, index: number) => {
+                        console.error(`❌ Proof ${index + 1} verification result:`, result.verified ? '✅ Verified' : '❌ Failed');
+                        if (result.error) {
+                            console.error(`   Error details for proof ${index + 1}:`, result.error);
+                        }
+                    });
+                }
+            }
+        
+        } catch (e) {
+            console.error(`❌ Error during credential verification for DID: ${droneDid}`, e);
+            res.status(400).json({ error: 'credential_verification_failed', message: 'An error occurred while verifying the credential.' });
+            return;
+        }
+        
+        if (isVerified === true) {
 
-              console.log(`🔐 Credential Verified. ID: ${credentialId}`);
-              
-              try {
-                  const isRevoked = await bcService.isRevoked(credentialId);
-
-                  if (isRevoked) {
-                      console.error(`SECURITY ALERT: Drone with REVOKED credentials attempted to send data.`);
-                      console.error(`   - Drone DID: ${droneDid}`);
-                      console.error(`   - Credential ID: ${credentialId}`);
-
-                      res.status(403).json({ 
-                          error: 'credential_revoked', 
-                          message: 'Your credential has been revoked. Access denied.' 
-                      });
-                      return; 
-                  }
-              } catch (revocationError) {
-                  console.warn('⚠️  The revocation status could not be verified (Blockchain offline?). It is assumed to be valid by default.', revocationError);
-              }
-
-              console.log('   - ✅ Valid and ACTIVE license (not revoked).');
-
-              const battery = body.battery ?? 0;
-              const altitude = body.altitude ?? 0;
-              const temperature = body.temperature ?? body.temp ?? 0;
-              const timestamp = body.timestamp || new Date().toISOString();
-
-              const csvLine = `${timestamp},${droneDid},${battery},${altitude},${temperature}\n`
-              fs.appendFileSync(DATASET_FILE, csvLine)
-
-              try {
-                  const recordId = `flight-${Date.now()}`;
-                  
-                  console.log(`💾 Writing in Ledger... [ID: ${recordId}]`)
-                  
-                  await bcService.createTelemetry(
-                      recordId,
-                      timestamp,      
-                      droneDid || 'unknown_did',
-                      battery,
-                      altitude,
-                      temperature
-                  )
-                  console.log(`🔗 Immutable data successfully recorded.`)
-
-              } catch (bcError) {
-                  console.error('❌ Error writing to Blockchain:', bcError)
-              }
-              
-              res.json({ status: 'success', message: 'Data verified and saved on-chain' })
+            if (targetCredential.credentialSubject?.id !== droneDid) {
+                console.error(`⛔ Security Alert: Credential subject DID (${targetCredential.credentialSubject?.id}) does not match sender DID (${droneDid}). Possible identity mismatch or tampering attempt.`);
+                return res.status(403).json({ error: 'identity_mismatch', message: 'The credential does not belong to you.' });
             }
 
+            const credentialId = targetCredential.id;
+            if (!credentialId) {
+                return res.status(400).json({ error: 'invalid_credential', message: 'Credential must have an ID.' });
+            }
+
+            console.log(`✅ Credential verified successfully for DID: ${droneDid}. Credential ID: ${credentialId}`);
+
+            try {
+                const isRevoked = await bcService.isRevoked(credentialId);
+                if (isRevoked) {
+                    console.warn(`⚠️  Credential with ID ${credentialId} is revoked.`);
+                    return res.status(400).json({ error: 'revoked_credential', message: 'The credential has been revoked.' });
+                }
+            } catch (revocationError) {
+                console.error(`❌ Error checking revocation status for credential ID: ${credentialId}`, revocationError);
+                return res.status(500).json({ error: 'revocation_check_failed', message: 'An error occurred while checking credential revocation status.' });
+            }
+
+            const battery = body.battery ?? 0;
+            const altitude = body.altitude ?? 0;
+            const temperature = body.temperature ?? body.temp ?? 0;
+            const timestamp = body.timestamp || new Date().toISOString();
+
+            const csvLine = `${timestamp},${droneDid},${battery},${altitude},${temperature}\n`
+            fs.appendFileSync(DATASET_FILE, csvLine)
+
+            try {
+                const recordId = `flight-${Date.now()}`;
+                await bcService.createTelemetry(recordId, timestamp, droneDid || 'unknown_did', battery, altitude, temperature)
+            } catch (bcError) {
+                console.error('❌ Error writing to Blockchain:', bcError)
+            }
+
+            res.json({ status: 'success', message: 'Data verified and saved on-chain' })
+
         } else {
-            console.warn(`⚠️  Invalid credential signature for DID: ${droneDid}`);
-            res.status(403).send('Invalid Credential Signature');
+            console.warn(`⚠️  Credential verification failed for DID: ${droneDid}. Possible tampering or invalid credential`);
+            res.status(400).json({ error: 'invalid_credential', message: 'Credential verification failed. Data not accepted.' });
         }
 
       } catch (error) {
         console.error('❌ Error processing DIDComm message:', error);
         res.status(500).send('Internal Server Error');
+        
       }
     })
   
