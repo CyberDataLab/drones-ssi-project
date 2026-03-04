@@ -7,9 +7,11 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@mattrglobal/jsonld-signatures-bbs": "^1.2.0",
     "@tfm/shared": "file:../shared",
     "@veramo/core": "^5.6.0",
     "express": "^5.2.1",
+    "jsonld-signatures": "^5.2.0",
     "sqlite3": "^5.1.7",
     "typeorm": "^0.3.28"
   },
