@@ -6,7 +6,12 @@ import * as path from 'path'
 import { Bls12381G2KeyPair, BbsBlsSignature2020 } from '@mattrglobal/jsonld-signatures-bbs'
 // @ts-ignore
 import { extendContextLoader, sign, purposes } from 'jsonld-signatures'
+import { AUTH } from 'sqlite3'
 
+
+
+const AUTH_KEY_FILE = path.join(__dirname, '../keys/authority-key.json')
+const PUBLIC_KEY_FILE = path.join(__dirname, '../keys/authority-public-key.json')
 
 // Auxiliar function to read input from terminal
 function openTerminal(question: string): Promise<string> {
@@ -84,7 +89,45 @@ async function main() {
 
 
     console.log('\n⚙️ Generating ney BLS12-381 key pair for signing credentials ZKP...')
-    const keyPair = await Bls12381G2KeyPair.generate();
+    
+    let bbsKeyPair;
+
+    if (fs.existsSync(AUTH_KEY_FILE)) {
+      console.log('🔑 Existing key pair found. Loading from file...')
+      const savedKey = JSON.parse(fs.readFileSync(AUTH_KEY_FILE, 'utf-8'))
+      bbsKeyPair = new Bls12381G2KeyPair({
+        id: savedKey.id,
+        controller: savedKey.controller,
+        publicKeyBase58: savedKey.publicKey,
+        privateKeyBase58: savedKey.privateKey
+      })
+    } else {
+      console.log('🔑 No existing key pair found. Generating new one...')
+      bbsKeyPair = await Bls12381G2KeyPair.generate({
+        id: `${authorityIdentifier.did}#bbs-key-1`,
+        controller: authorityIdentifier.did
+      })
+
+      const keyData = {
+        id: bbsKeyPair.id,
+        controller: bbsKeyPair.controller,
+        publicKey: bbsKeyPair.publicKey,
+        privateKey: bbsKeyPair.privateKey
+      }
+
+      fs.writeFileSync(AUTH_KEY_FILE, JSON.stringify(keyData, null, 2), 'utf-8')
+      
+      const pubKeyExport = {
+        id: bbsKeyPair.id,
+        type: 'Bls12381G2Key2020',
+        controller: bbsKeyPair.controller,
+        publicKeyBase58: bbsKeyPair.publicKey
+      };
+
+      fs.writeFileSync(PUBLIC_KEY_FILE, JSON.stringify(pubKeyExport, null, 2), 'utf-8')
+
+      console.log(`🔐 New BLS12-381 key pair generated and saved to ${AUTH_KEY_FILE} and ${PUBLIC_KEY_FILE}`)
+    }
 
     const targetDID = await openTerminal('👉 Please enter the drone DID (did:key:...): ')
 
@@ -127,7 +170,7 @@ async function main() {
 
 
     const signedCredential = await sign(credentialDocument, {
-      suite: new BbsBlsSignature2020({ key: keyPair }),
+      suite: new BbsBlsSignature2020({ key: bbsKeyPair }),
       purpose: new purposes.AssertionProofPurpose(),
       documentLoader: documentLoader
     });

@@ -1,15 +1,16 @@
 node_modules
 dist
 *.log
-
-
-notes.txt
 *.sqlite
-drone-config.json
 *.csv
 fabric-network/
 certs/*
-
 users.json
 
+notes.txt
+
 packages/authority/issued-licenses
+packages/authority/keys/*
+packages/server/authority_public_key/*
+packages/drone/license/drone-license.json
+packages/drone/drone-config.json
