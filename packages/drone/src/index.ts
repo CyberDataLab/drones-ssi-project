@@ -9,6 +9,7 @@ import { BbsBlsSignature2020, BbsBlsSignatureProof2020, deriveProof } from "@mat
 import { extendContextLoader, purposes, verify } from "jsonld-signatures";
 import * as dgram from "dgram";
 import { randomBytes } from "crypto";
+import { start } from "repl";
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // This is needed to allow self-signed certificates in development. DO NOT USE IN PRODUCTION.
 let isConnectedToServer = false;
@@ -178,6 +179,62 @@ async function main() {
         }
       }, retryTelemetryInterval);
     }
+
+    function startP2PTelemetryLoop() {
+      setInterval(async () => {
+        let hasAuthenticatedPeers = false;
+        for (const peer of knownPeers.values()) {
+          if (peer.status === "fully_authenticated") {
+            hasAuthenticatedPeers = true;
+            break;
+          }
+        }
+
+        if (!hasAuthenticatedPeers) return;
+
+        const currentFlightData = {
+          altitude: parseFloat(simAltitude.toFixed(1)),
+          battery: parseFloat(simBattery.toFixed(1)),
+          timestamp: new Date().toISOString()
+        };
+
+        for (const [peerId, peer] of knownPeers.entries()) {
+          if (peer.status === "fully_authenticated" && peer.did) {
+            try {
+              const p2pMessage = {
+                id: 'p2p-msg-' + Date.now(),
+                type: 'https://didcomm.org/drone-p2p/1.0/telemetry',
+                from: droneDID,
+                to: [peer.did],
+                body: currentFlightData
+              };
+
+              const packedP2P = await agent.packDIDCommMessage({ packing: 'authcrypt', message: p2pMessage });
+
+              console.log(`📡 Sending P2P telemetry to ${peerId}: Altitude ${currentFlightData.altitude}m, Battery ${currentFlightData.battery}%...`);
+              fetch(`http://${peer.ip}:${peer.port}/messaging`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: packedP2P.message
+              }).catch(e => {
+                // If there's an error sending to this peer, we log it but don't mark them as disconnected immediately, since it could be a transient network issue. We'll find out in the next cycle if they're still reachable.
+                console.error(`❌ Error sending P2P telemetry to ${peerId}: ${e}`);
+                console.log(`⚠️ Will check peer ${peerId} connectivity in the next cycle...`);
+              });
+
+
+
+            } catch (e) {
+              console.error(`❌ Error preparing P2P telemetry for ${peerId}: ${e}`);
+            }
+          }
+        }
+
+
+      }, 2000);
+    }
+
+
 
     const contextCache = new Map();
 
@@ -350,6 +407,44 @@ async function main() {
         },
       },
     });
+    contextCache.set('https://www.w3.org/2018/credentials/v1', {
+      contextUrl: null,
+      documentUrl: 'https://www.w3.org/2018/credentials/v1',
+      document: {
+        "@context": {
+          "@version": 1.1,
+          "@protected": true,
+          "id": "@id",
+          "type": "@type",
+          "VerifiableCredential": {
+            "@id": "https://www.w3.org/2018/credentials#VerifiableCredential",
+            "@context": {
+              "@version": 1.1,
+              "@protected": true,
+              "id": "@id",
+              "type": "@type",
+              "credentialSubject": { "@id": "https://www.w3.org/2018/credentials#credentialSubject", "@type": "@id" },
+              "issuer": { "@id": "https://www.w3.org/2018/credentials#issuer", "@type": "@id" },
+              "issuanceDate": { "@id": "https://www.w3.org/2018/credentials#issuanceDate", "@type": "http://www.w3.org/2001/XMLSchema#dateTime" },
+              "expirationDate": { "@id": "https://www.w3.org/2018/credentials#expirationDate", "@type": "http://www.w3.org/2001/XMLSchema#dateTime" },
+              "proof": { "@id": "https://w3id.org/security#proof", "@type": "@id", "@container": "@graph" }
+            }
+          },
+          "VerifiablePresentation": {
+            "@id": "https://www.w3.org/2018/credentials#VerifiablePresentation",
+            "@context": {
+              "@version": 1.1,
+              "@protected": true,
+              "id": "@id",
+              "type": "@type",
+              "holder": { "@id": "https://www.w3.org/2018/credentials#holder", "@type": "@id" },
+              "verifiableCredential": { "@id": "https://www.w3.org/2018/credentials#verifiableCredential", "@type": "@id", "@container": "@graph" },
+              "proof": { "@id": "https://w3id.org/security#proof", "@type": "@id", "@container": "@graph" }
+            }
+          }
+        }
+      }
+    });
 
     const customLoader = async (url: string) => {
       if (contextCache.has(url)) return contextCache.get(url);
@@ -506,6 +601,27 @@ async function main() {
     app.post("/messaging", async (req, res) => {
       const message = req.body;
 
+      if (message.ciphertext || message.protected) {
+        try {
+
+          const rawMessageString = typeof message === 'string' ? message : JSON.stringify(message);
+          const unpacked = await agent.unpackDIDCommMessage({ message: rawMessageString });
+          const decryptedMsg = unpacked.message;
+
+          if (decryptedMsg.type === 'https://didcomm.org/drone-p2p/1.0/telemetry') {
+            const { altitude, battery } = decryptedMsg.body;
+            console.log(`\n🛡️ [SECURE P2P] Telemetry from ${decryptedMsg.from}`);
+            console.log(`   ➜ Peer Altitude: ${altitude}m | Battery: ${battery}%`);
+
+            return res.status(200).send('Secure Telemetry Processed');
+          }
+        } catch (e) {
+          console.error(`❌ Error unpacking/authenticating message: ${e}`);
+          return res.status(400).send('Invalid encrypted message');
+        }
+      }
+
+
       if (message.type === "https://didcomm.org/drone-metrics/1.0/zkp-challenge") {
         console.log(`🔍 Received ZKP challenge from ${message.from}`);
 
@@ -644,6 +760,10 @@ async function main() {
         return;
       }
 
+
+
+
+
       res.status(400).send('Unsupported message type');
     });
 
@@ -703,6 +823,7 @@ async function main() {
     startUDPRadar();
     registerInDirectory();
     startTelemetryLoop();
+    startP2PTelemetryLoop();
   } catch (error) {
     console.error("❌ Error: ", error);
   }
