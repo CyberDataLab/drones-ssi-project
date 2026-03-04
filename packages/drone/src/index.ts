@@ -1,4 +1,5 @@
 import { createSSIAgent } from "@tfm/shared";
+import { preloadedContexts } from "./cache-contexts";
 import * as fs from "fs";
 import * as path from "path";
 import * as https from "https";
@@ -9,7 +10,7 @@ import { BbsBlsSignature2020, BbsBlsSignatureProof2020, deriveProof } from "@mat
 import { extendContextLoader, purposes, verify } from "jsonld-signatures";
 import * as dgram from "dgram";
 import { randomBytes } from "crypto";
-import { start } from "repl";
+
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // This is needed to allow self-signed certificates in development. DO NOT USE IN PRODUCTION.
 let isConnectedToServer = false;
@@ -234,217 +235,12 @@ async function main() {
       }, 2000);
     }
 
-
-
     const contextCache = new Map();
 
     // Preload important contexts to avoid network calls during critical operations like ZKP verification. This also allows us to inject custom contexts for the BBS+ suite and the drone license credential.
-    contextCache.set("https://w3id.org/security/suites/jws-2020/v1", {
-      contextUrl: null,
-      documentUrl: "https://w3id.org/security/suites/jws-2020/v1",
-      document: {
-        "@context": {
-          id: "@id",
-          type: "@type",
-          JsonWebSignature2020: {
-            "@id": "https://w3id.org/security#JsonWebSignature2020",
-            "@context": {
-              "@protected": true,
-              id: "@id",
-              type: "@type",
-              challenge: "https://w3id.org/security#challenge",
-              created: {
-                "@id": "http://purl.org/dc/terms/created",
-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
-              },
-              domain: "https://w3id.org/security#domain",
-              expires: {
-                "@id": "https://w3id.org/security#expiration",
-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
-              },
-              jws: "https://w3id.org/security#jws",
-              nonce: "https://w3id.org/security#nonce",
-              proofPurpose: {
-                "@id": "https://w3id.org/security#proofPurpose",
-                "@type": "@vocab",
-                "@context": {
-                  "@protected": true,
-                  id: "@id",
-                  type: "@type",
-                  assertionMethod: {
-                    "@id": "https://w3id.org/security#assertionMethod",
-                    "@type": "@id",
-                    "@container": "@set",
-                  },
-                  authentication: {
-                    "@id": "https://w3id.org/security#authenticationMethod",
-                    "@type": "@id",
-                    "@container": "@set",
-                  },
-                },
-              },
-              proofValue: "https://w3id.org/security#proofValue",
-              verificationMethod: {
-                "@id": "https://w3id.org/security#verificationMethod",
-                "@type": "@id",
-              },
-            },
-          },
-        },
-      },
-    });
-    contextCache.set("https://w3id.org/security/bbs/v1", {
-      contextUrl: null,
-      documentUrl: "https://w3id.org/security/bbs/v1",
-      document: {
-        "@context": {
-          id: "@id",
-          type: "@type",
-          BbsBlsSignature2020: {
-            "@id": "https://w3id.org/security#BbsBlsSignature2020",
-            "@context": {
-              "@protected": true,
-              id: "@id",
-              type: "@type",
-              challenge: "https://w3id.org/security#challenge",
-              created: {
-                "@id": "http://purl.org/dc/terms/created",
-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
-              },
-              domain: "https://w3id.org/security#domain",
-              expires: {
-                "@id": "https://w3id.org/security#expiration",
-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
-              },
-              nonce: "https://w3id.org/security#nonce",
-              proofPurpose: {
-                "@id": "https://w3id.org/security#proofPurpose",
-                "@type": "@vocab",
-                "@context": {
-                  "@protected": true,
-                  id: "@id",
-                  type: "@type",
-                  assertionMethod: {
-                    "@id": "https://w3id.org/security#assertionMethod",
-                    "@type": "@id",
-                    "@container": "@set",
-                  },
-                  authentication: {
-                    "@id": "https://w3id.org/security#authenticationMethod",
-                    "@type": "@id",
-                    "@container": "@set",
-                  },
-                },
-              },
-              proofValue: "https://w3id.org/security#proofValue",
-              verificationMethod: {
-                "@id": "https://w3id.org/security#verificationMethod",
-                "@type": "@id",
-              },
-            },
-          },
-          BbsBlsSignatureProof2020: {
-            "@id": "https://w3id.org/security#BbsBlsSignatureProof2020",
-            "@context": {
-              "@protected": true,
-              id: "@id",
-              type: "@type",
-              challenge: "https://w3id.org/security#challenge",
-              created: {
-                "@id": "http://purl.org/dc/terms/created",
-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
-              },
-              domain: "https://w3id.org/security#domain",
-              expires: {
-                "@id": "https://w3id.org/security#expiration",
-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
-              },
-              nonce: "https://w3id.org/security#nonce",
-              proofPurpose: {
-                "@id": "https://w3id.org/security#proofPurpose",
-                "@type": "@vocab",
-                "@context": {
-                  "@protected": true,
-                  id: "@id",
-                  type: "@type",
-                  assertionMethod: {
-                    "@id": "https://w3id.org/security#assertionMethod",
-                    "@type": "@id",
-                    "@container": "@set",
-                  },
-                  authentication: {
-                    "@id": "https://w3id.org/security#authenticationMethod",
-                    "@type": "@id",
-                    "@container": "@set",
-                  },
-                },
-              },
-              proofValue: "https://w3id.org/security#proofValue",
-              verificationMethod: {
-                "@id": "https://w3id.org/security#verificationMethod",
-                "@type": "@id",
-              },
-            },
-          },
-          Bls12381G2Key2020: {
-            "@id": "https://w3id.org/security#Bls12381G2Key2020",
-            "@context": {
-              "@protected": true,
-              id: "@id",
-              type: "@type",
-              controller: {
-                "@id": "https://w3id.org/security#controller",
-                "@type": "@id",
-              },
-              revoked: {
-                "@id": "https://w3id.org/security#revoked",
-                "@type": "http://www.w3.org/2001/XMLSchema#dateTime",
-              },
-              publicKeyBase58: "https://w3id.org/security#publicKeyBase58",
-              privateKeyBase58: "https://w3id.org/security#privateKeyBase58",
-            },
-          },
-        },
-      },
-    });
-    contextCache.set('https://www.w3.org/2018/credentials/v1', {
-      contextUrl: null,
-      documentUrl: 'https://www.w3.org/2018/credentials/v1',
-      document: {
-        "@context": {
-          "@version": 1.1,
-          "@protected": true,
-          "id": "@id",
-          "type": "@type",
-          "VerifiableCredential": {
-            "@id": "https://www.w3.org/2018/credentials#VerifiableCredential",
-            "@context": {
-              "@version": 1.1,
-              "@protected": true,
-              "id": "@id",
-              "type": "@type",
-              "credentialSubject": { "@id": "https://www.w3.org/2018/credentials#credentialSubject", "@type": "@id" },
-              "issuer": { "@id": "https://www.w3.org/2018/credentials#issuer", "@type": "@id" },
-              "issuanceDate": { "@id": "https://www.w3.org/2018/credentials#issuanceDate", "@type": "http://www.w3.org/2001/XMLSchema#dateTime" },
-              "expirationDate": { "@id": "https://www.w3.org/2018/credentials#expirationDate", "@type": "http://www.w3.org/2001/XMLSchema#dateTime" },
-              "proof": { "@id": "https://w3id.org/security#proof", "@type": "@id", "@container": "@graph" }
-            }
-          },
-          "VerifiablePresentation": {
-            "@id": "https://www.w3.org/2018/credentials#VerifiablePresentation",
-            "@context": {
-              "@version": 1.1,
-              "@protected": true,
-              "id": "@id",
-              "type": "@type",
-              "holder": { "@id": "https://www.w3.org/2018/credentials#holder", "@type": "@id" },
-              "verifiableCredential": { "@id": "https://www.w3.org/2018/credentials#verifiableCredential", "@type": "@id", "@container": "@graph" },
-              "proof": { "@id": "https://w3id.org/security#proof", "@type": "@id", "@container": "@graph" }
-            }
-          }
-        }
-      }
-    });
+    for (const [url, data] of Object.entries(preloadedContexts)) {
+      contextCache.set(url, data);
+    }
 
     const customLoader = async (url: string) => {
       if (contextCache.has(url)) return contextCache.get(url);
