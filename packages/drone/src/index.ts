@@ -10,6 +10,7 @@ import { BbsBlsSignature2020, BbsBlsSignatureProof2020, deriveProof } from "@mat
 import { extendContextLoader, purposes, verify } from "jsonld-signatures";
 import * as dgram from "dgram";
 import { randomBytes } from "crypto";
+import { Any } from "typeorm";
 
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // This is needed to allow self-signed certificates in development. DO NOT USE IN PRODUCTION.
@@ -24,7 +25,7 @@ async function main() {
   const SECRET_KEY = "29739248cad1bd1a0fc4d9b75cd4d2990de535baf5caadfdf8d8f86664aa830c";
   const DB_FILE = "drone-database.sqlite";
   const CONFIG_FILE = path.join(__dirname, "../drone-config.json");
-  const LOCAL_LICENSE_FILE = path.join(__dirname, "../license/drone-license.json",);
+  const LOCAL_LICENSE_FILE = path.join(__dirname, "../license/drone-license.jwe",);
 
   if (!fs.existsSync(CONFIG_FILE)) {
     console.error("❌ ERROR: Configuration file not found. Please run the setup script first.");
@@ -74,9 +75,37 @@ async function main() {
 
     const droneDID = identifiers[0].did;
 
-    const myBbsCredential = JSON.parse(fs.readFileSync(LOCAL_LICENSE_FILE, "utf-8"));
-    console.log(`📄 Loaded local license credential for DID: ${droneDID}`);
-    console.log(`📄 BBS+ credential loaded`);
+    // const myBbsCredential = JSON.parse(fs.readFileSync(LOCAL_LICENSE_FILE, "utf-8"));
+    // console.log(`📄 Loaded local license credential for DID: ${droneDID}`);
+    // console.log(`📄 BBS+ credential loaded`);
+
+    if (!fs.existsSync(LOCAL_LICENSE_FILE)) {
+      console.error(`❌ ERROR: License file not found at ${LOCAL_LICENSE_FILE}. Please place the "drone-license.json" file in the "license" folder.`);
+      process.exit(1);
+    }
+
+    console.log(`🔐 Unpacking encrypted license from disk...`);
+    const encryptedBlob = fs.readFileSync(LOCAL_LICENSE_FILE, "utf-8");
+
+    let myBbsCredential: any;
+
+    try {
+      // 2. Ask Veramo to decrypt the message using the Drone's private key
+      const unpacked = await agent.unpackDIDCommMessage({
+        message: encryptedBlob
+      });
+
+      // 3. Extract the actual BBS+ credential from the decrypted payload
+      if (unpacked.message.type === "https://didcomm.org/drone-provisioning/1.0/secure-license") {
+        myBbsCredential = unpacked.message.body.credential;
+        console.log(`🔓 Success! License decrypted in RAM for DID: ${droneDID}`);
+      } else {
+        throw new Error("Invalid message type in encrypted file");
+      }
+    } catch (error) {
+      console.error("⛔ ERROR: Could not decrypt the license. Are the keys in the SQLite database correct?", error);
+      process.exit(1);
+    }
 
     async function registerInDirectory() {
       const myEndpoint = `http://${MY_IP}:${P2P_PORT}/messaging`;

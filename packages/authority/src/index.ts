@@ -1,6 +1,6 @@
 import { createSSIAgent } from '@tfm/shared'
 import * as readline from 'readline'
-import { v4 as uuidv4 } from 'uuid' 
+import { v4 as uuidv4 } from 'uuid'
 import * as fs from 'fs'
 import * as path from 'path'
 import { Bls12381G2KeyPair, BbsBlsSignature2020 } from '@mattrglobal/jsonld-signatures-bbs'
@@ -37,7 +37,7 @@ const customLoader = async (url: string) => {
   if (contextCache.has(url)) {
     console.log(`⚡ [Context Cache Hit]: ${url}`)
     return contextCache.get(url);
-  } 
+  }
 
   console.log(`🌐 [Loading W3C Context]: ${url}`)
 
@@ -76,20 +76,20 @@ async function main() {
     const agent = await createSSIAgent(DB_FILE, AUTHORITY_SECRET)
 
     let authorityIdentifier = (await agent.didManagerFind())[0]
-    
+
     if (!authorityIdentifier) {
-        authorityIdentifier = await agent.didManagerCreate({ 
-            alias: 'Authority-01', 
-            provider: 'did:key' 
-        })
+      authorityIdentifier = await agent.didManagerCreate({
+        alias: 'Authority-01',
+        provider: 'did:key'
+      })
     }
-    
+
     console.log(`✅ Active Authority: ${authorityIdentifier.did}`)
     console.log('-------------------------------------------------------')
 
 
     console.log('\n⚙️ Generating ney BLS12-381 key pair for signing credentials ZKP...')
-    
+
     let bbsKeyPair;
 
     if (fs.existsSync(AUTH_KEY_FILE)) {
@@ -116,7 +116,7 @@ async function main() {
       }
 
       fs.writeFileSync(AUTH_KEY_FILE, JSON.stringify(keyData, null, 2), 'utf-8')
-      
+
       const pubKeyExport = {
         id: bbsKeyPair.id,
         type: 'Bls12381G2Key2020',
@@ -132,8 +132,8 @@ async function main() {
     const targetDID = await openTerminal('👉 Please enter the drone DID (did:key:...): ')
 
     if (!targetDID || !targetDID.startsWith('did:')) {
-        console.error('❌ Error: DID format not valid')
-        return
+      console.error('❌ Error: DID format not valid')
+      return
     }
 
     console.log(`\n⚙️  Creating BBS+ license for: ${targetDID}...`)
@@ -154,7 +154,7 @@ async function main() {
           // This could be used as domain identifiers (check it later)
           "authorizedArea": "https://tfm.es/vocab#authorizedArea"
         }
-       ],
+      ],
       "id": licenseId,
       "type": ['VerifiableCredential', 'DroneLicense'],
       "issuer": authorityIdentifier.did,
@@ -176,11 +176,29 @@ async function main() {
     });
 
     console.log('📜 Credential Created and Signed with BBS+!')
+    console.log('🔒 Encrypting license into a JWE specifically for the Drone DID...')
+
+    // Wrap the signed credential into a DIDComm message structure
+    const licenseMessage = {
+      id: `license-msg-${Date.now()}`,
+      type: "https://didcomm.org/drone-provisioning/1.0/secure-license",
+      from: authorityIdentifier.did,
+      to: [targetDID],
+      body: {
+        credential: signedCredential
+      }
+    };
+
+    // This provides Confidentiality (encrypted for targetDID) and Authenticity (signed by Authority)
+    const packedMessage = await agent.packDIDCommMessage({
+      packing: "authcrypt",
+      message: licenseMessage,
+    });
 
     const shortDID = targetDID.substring(0, 16);
-    const outputFileName = `license-${shortDID}.json`;
+    const outputFileName = `license-${shortDID}.jwe`;
     const outDir = path.join(process.cwd(), 'issued-licenses');
-    
+
     if (!fs.existsSync(outDir)) {
       fs.mkdirSync(outDir);
     }
@@ -188,7 +206,7 @@ async function main() {
     const outputPath = path.join(outDir, outputFileName);
 
     console.log('---------------------------------------------------')
-    fs.writeFileSync(outputPath, JSON.stringify(signedCredential, null, 2), 'utf-8');
+    fs.writeFileSync(outputPath, packedMessage.message, 'utf-8');
     console.log(`💾 Signed credential saved to: ${outputPath}`)
     console.log('---------------------------------------------------')
 
