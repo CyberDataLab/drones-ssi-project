@@ -18,6 +18,7 @@ const PUB_KEY_AUTHORITY = path.join(__dirname, '../authority_public_key/authorit
 // Dashboard credentials and configuration
 const JWT_SECRET = 'secret-key-for-authentication'      // Change this in production. Use env vars or secure vaults.
 const USER_FILE = path.join(__dirname, '../users.json')
+const LOCAL_LICENSE_FILE = path.join(__dirname, '../license/server-license.jwe')
 
 interface User {
   username: string;
@@ -97,6 +98,30 @@ async function main() {
 
     console.log(`✅ Server Identifier (DID): ${serverIdentifier.did}`)
     console.log('---------------------------------------------------------')
+
+    if (!fs.existsSync(LOCAL_LICENSE_FILE)) {
+      console.warn('⚠️  No local license found for the server. Please obtain a license from the Certification Authority and save it as "server-license.jwe" in the project root.')
+      console.log('Server DID:', serverIdentifier.did)
+      process.exit(1);
+    }
+    const encryptedBlob = fs.readFileSync(LOCAL_LICENSE_FILE, "utf-8");
+    let myBbsCredential: any;
+
+    try {
+      const unpacked = await agent.unpackDIDCommMessage({
+        message: encryptedBlob
+      });
+
+      if (unpacked.message.type === "https://didcomm.org/provisioning/1.0/secure-license") {
+        myBbsCredential = unpacked.message.body.credential;
+        console.log(`🔓 Success! License decrypted in RAM`);
+      } else {
+        throw new Error(`Invalid message type in license file. Received: ${unpacked.message.type}`);
+      }
+    } catch (error) {
+      console.error("⛔ ERROR: Could not decrypt the license. Are the keys in the SQLite database correct?", error);
+      process.exit(1);
+    }
 
 
     const contextCache = new Map();
@@ -300,7 +325,10 @@ async function main() {
       if (action === 'register') {
         droneDirectory.set(did, endpoint);
         console.log(`📇 Local Directory Registration: ${did} -> ${endpoint}`);
-        return res.status(200).json({ status: 'registered' });
+        return res.status(200).json({
+          status: 'registered',
+          serverCredential: myBbsCredential
+        });
       }
       if (action === 'lookup') {
         const targetEndpoint = droneDirectory.get(did);

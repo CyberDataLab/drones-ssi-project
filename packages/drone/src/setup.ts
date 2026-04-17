@@ -71,11 +71,11 @@ async function main() {
       const unpacked = await agent.unpackDIDCommMessage({ message: encryptedBlob })
 
       // 3. Verify it's the correct message type and extract the credential payload
-      if (unpacked.message.type === "https://didcomm.org/drone-provisioning/1.0/secure-license") {
+      if (unpacked.message.type === "https://didcomm.org/provisioning/1.0/secure-license") {
         licenseData = unpacked.message.body.credential;
         console.log('🔓 Successfully decrypted the license in memory!')
       } else {
-        throw new Error("Invalid DIDComm message type.");
+        throw new Error(`Invalid DIDComm message type. Received: ${unpacked.message.type}`);
       }
     } catch (e) {
       console.error('❌ Error: Could not decrypt the license. Is this JWE meant for this Drone DID?', e)

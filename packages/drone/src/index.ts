@@ -10,7 +10,6 @@ import { BbsBlsSignature2020, BbsBlsSignatureProof2020, deriveProof } from "@mat
 import { extendContextLoader, purposes, verify } from "jsonld-signatures";
 import * as dgram from "dgram";
 import { randomBytes } from "crypto";
-import { Any } from "typeorm";
 
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // This is needed to allow self-signed certificates in development. DO NOT USE IN PRODUCTION.
@@ -18,6 +17,7 @@ let isConnectedToServer = false;
 let telemetryBuffer: any[] = [];
 let retryTelemetryInterval = 5000;
 let retryRegisterInterval = 5000;
+let serverLicenseValidUntil: Date | null = null;
 
 async function main() {
   console.log("🚁 Starting Drone Agent...");
@@ -90,17 +90,17 @@ async function main() {
     let myBbsCredential: any;
 
     try {
-      // 2. Ask Veramo to decrypt the message using the Drone's private key
+      // Ask Veramo to decrypt the message using the Drone's private key
       const unpacked = await agent.unpackDIDCommMessage({
         message: encryptedBlob
       });
 
-      // 3. Extract the actual BBS+ credential from the decrypted payload
-      if (unpacked.message.type === "https://didcomm.org/drone-provisioning/1.0/secure-license") {
+      // Extract the actual BBS+ credential from the decrypted payload
+      if (unpacked.message.type === "https://didcomm.org/provisioning/1.0/secure-license") {
         myBbsCredential = unpacked.message.body.credential;
         console.log(`🔓 Success! License decrypted in RAM for DID: ${droneDID}`);
       } else {
-        throw new Error("Invalid message type in encrypted file");
+        throw new Error(`Invalid message type in encrypted file. Received: ${unpacked.message.type}`);
       }
     } catch (error) {
       console.error("⛔ ERROR: Could not decrypt the license. Are the keys in the SQLite database correct?", error);
@@ -110,6 +110,9 @@ async function main() {
     async function registerInDirectory() {
       const myEndpoint = `http://${MY_IP}:${P2P_PORT}/messaging`;
       try {
+
+        console.log(`\n🔄 Attempting to register and authenticate Server at ${SERVER_IP}...`);
+
         const response = await fetch(`https://${SERVER_IP}:3000/directory`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -122,13 +125,43 @@ async function main() {
         } as any);
 
         if (response.ok) {
-          console.log(`✅ Registered in directory: ${myEndpoint}`);
+          const responseData = await response.json();
+
+          if (!responseData.serverCredential) {
+            throw new Error("Server did not provide an operational license. Trust denied.");
+          }
+          console.log("🔍 Verifying Server's Operation License...");
+
+          const verificationResult = await verify(responseData.serverCredential, {
+            suite: new BbsBlsSignature2020(),
+            purpose: new purposes.AssertionProofPurpose(),
+            documentLoader: documentLoader,
+          });
+
+          if (!verificationResult.verified) {
+            throw new Error("Server license signature is invalid or forged.");
+          }
+
+          const expirationString = responseData.serverCredential.expirationDate ||
+            responseData.serverCredential.credentialSubject?.expiryDate;
+
+          if (!expirationString) {
+            throw new Error("Server license is missing an expiration date attribute.");
+          }
+          serverLicenseValidUntil = new Date(expirationString);
+
+          if (new Date() > serverLicenseValidUntil) {
+            throw new Error(`Server license expired on ${serverLicenseValidUntil.toLocaleString()}!`);
+          }
+
+          console.log(`✅ Registered in directory: ${myEndpoint}.  Server license valid until ${serverLicenseValidUntil.toLocaleString()}.`);
           isConnectedToServer = true;
         } else {
           throw new Error("Failed to register in directory: " + response.statusText);
         }
-      } catch (e) {
+      } catch (e: any) {
         isConnectedToServer = false;
+        serverLicenseValidUntil = null;
         console.log(`\n❌ Error registering in directory, will retry in ${retryRegisterInterval} ms...`);
         setTimeout(registerInDirectory, retryRegisterInterval);
       }
@@ -155,6 +188,18 @@ async function main() {
 
         if (!isConnectedToServer) {
           console.log(`\n⚠️ Not connected to server, telemetry buffered: ${telemetryBuffer.length} items`);
+          return;
+        }
+
+        if (serverLicenseValidUntil && new Date() > serverLicenseValidUntil) {
+          console.log(`\n🚨 ALERT: Server license EXPIRED at ${serverLicenseValidUntil.toLocaleString()}!`);
+          console.log(`🛡️ Cutting off data transmission to protect telemetry.`);
+
+          isConnectedToServer = false;
+          serverLicenseValidUntil = null; // Clear it to force a new full handshake
+
+          // Trigger a re-registration to see if the admin has renewed the server's license
+          registerInDirectory();
           return;
         }
 

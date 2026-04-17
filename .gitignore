@@ -12,5 +12,6 @@ notes.txt
 packages/authority/issued-licenses
 packages/authority/keys/*
 packages/server/authority_public_key/*
-packages/drone/license/drone-license.json
+packages/drone/license/*
 packages/drone/drone-config.json
+packages/server/license/*
