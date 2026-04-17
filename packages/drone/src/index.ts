@@ -13,7 +13,8 @@ async function main() {
     console.log(`📡 Detected local IP: ${getLocalIP()}`);
 
     try {
-        const agent = await createSSIAgent(config.DB_FILE, config.SECRET_KEY);
+        // :memory: is used to bypass the hard drive entirely
+        const agent = await createSSIAgent(':memory:', config.DB_ENCRYPTION_KEY);
         const { droneDID, serverDid, myBbsCredential } = await runProvisioning(agent);
         const documentLoader = createDocumentLoader(agent);
 

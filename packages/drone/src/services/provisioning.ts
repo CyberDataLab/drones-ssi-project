@@ -20,9 +20,19 @@ export async function runProvisioning(agent: any) {
     let droneDID: string;
 
     if (identifiers.length === 0) {
-        console.log('✨ Generating a new DID for the drone...');
-        const newId = await agent.didManagerCreate({ alias: 'Dron-01', provider: 'did:key' });
+        console.log('✨ Regenerating Identity from Mathematical Seed (RAM Mode)...');
+
+        // We force Veramo to build the DID using our injected Hex Key
+        const newId = await agent.didManagerCreate({
+            alias: 'Dron-01',
+            provider: 'did:key',
+            options: {
+                keyType: 'Ed25519',
+                privateKeyHex: config.PRIVATE_KEY_HEX
+            }
+        });
         droneDID = newId.did;
+
     } else {
         droneDID = identifiers[0].did;
         console.log('ℹ️  Existing Identity Found');

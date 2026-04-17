@@ -1,8 +1,15 @@
 import * as path from "path";
+import * as crypto from "crypto";
+
+
+const rawSeed = process.env.DRONE_SEED || "29739248cad1bd1a0fc4d9b75cd4d2990de535baf5caadfdf8d8f86664aa830c"
+
+const privateKeyHex = crypto.createHash('sha256').update(rawSeed).digest('hex');
+const dbEncryptionKey = crypto.createHash('sha256').update(rawSeed + 'db_secret').digest('hex');
 
 export const config = {
-    SECRET_KEY: "29739248cad1bd1a0fc4d9b75cd4d2990de535baf5caadfdf8d8f86664aa830c",
-    DB_FILE: "drone-database.sqlite",
+    PRIVATE_KEY_HEX: privateKeyHex,
+    DB_ENCRYPTION_KEY: dbEncryptionKey,
     CONFIG_FILE: path.join(__dirname, "../../drone-config.json"),
     LOCAL_LICENSE_FILE: path.join(__dirname, "../../license/drone-license.jwe"),
     AUTHORITY_PUB_KEY: path.join(__dirname, "../../authority_public_key/authority-public-key.json"),
