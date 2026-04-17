@@ -1,5 +1,5 @@
 import * as fs from "fs";
-import { preloadedContexts } from "../cache/cache-contexts"; // Ajusta el path según tu proyecto
+import { preloadedContexts } from "../cache/cache-contexts";
 // @ts-ignore
 import { extendContextLoader } from "jsonld-signatures";
 import { config } from "../config/env";
