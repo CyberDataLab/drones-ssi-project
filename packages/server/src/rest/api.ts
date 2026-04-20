@@ -44,9 +44,23 @@ export function setupRoutes(bcService: BlockchainService, ssiService: SSIService
         res.json({ token, role: user.role, username: user.username });
     });
 
+    router.post('/auth/register', authenticateToken, requireAdmin, async (req: any, res: Response) => {
+        const { username, password, role } = req.body;
+        if (!username || !password) return res.status(400).json({ error: 'Missing required fields' });
+
+        const users = getUsers();
+        if (users.some((u: any) => u.username === username)) return res.status(400).json({ error: 'User already exists' });
+        const hashedPassword = await bcrypt.hash(password, 10);
+        users.push({ username, passwordHash: hashedPassword, role: role === 'admin' ? 'admin' : 'auditor' });
+        fs.writeFileSync(CONFIG.USER_FILE, JSON.stringify(users, null, 2));
+        res.json({ message: 'User Created Successfully' });
+    });
+
     // --- DIDComm Messaging Route ---
     router.post('/messaging', async (req: Request, res: Response) => {
         try {
+            console.log('📩 Receiving DIDComm message...')
+
             const unpacked = await ssiService.unpackMessage(req.body);
             const { from: droneDid, body } = unpacked.message;
             const credentials = body.verifiableCredential;
@@ -81,6 +95,8 @@ export function setupRoutes(bcService: BlockchainService, ssiService: SSIService
         }
     });
 
+
+
     // --- Directory & Drones Routes ---
     router.post('/directory', (req: Request, res: Response) => {
         const { action, did, endpoint } = req.body;
@@ -95,8 +111,72 @@ export function setupRoutes(bcService: BlockchainService, ssiService: SSIService
         res.status(400).send('Invalid action.');
     });
 
-    // Additional routes (history, drones, register, revoke...) follow the same pattern
-    // They just call bcService methods and return the response.
+    router.get('/history/:did', authenticateToken, async (req: Request, res: Response) => {
+        try {
+            const didParam = req.params.did as string;
+            const cleanDid = decodeURIComponent(didParam);
+            const data = await bcService.getTelemetryByDid(cleanDid);
+
+            res.json(JSON.parse(data));
+        } catch (error) {
+            console.error('❌ Error obtaining telemetry data:', error);
+            res.status(500).send({ error: 'Error obtaining telemetry data from Blockchain' });
+        }
+    });
+
+    router.get('/drones', authenticateToken, async (req: Request, res: Response) => {
+        try {
+            const drones = await bcService.getAllDrones();
+            res.json(drones);
+        } catch (error) {
+            console.error('❌ Error obtaining drones list:', error);
+            res.status(500).send({ error: 'Blockchain Error' });
+        }
+    });
+
+    router.post('/register', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+        try {
+            const { droneDid, name } = req.body;
+
+            if (!droneDid || !name) {
+                return res.status(400).json({ error: 'Missing data (DID or Name)' });
+            }
+
+            await bcService.registerDrone(droneDid, name);
+            res.json({ status: 'success', message: `Drone ${name} registered successfully` });
+
+        } catch (error) {
+            console.error('❌ Error registering drone:', error);
+            res.status(500).json({ error: 'Internal Blockchain error while registering drone' });
+        }
+    });
+
+    router.post('/revoke', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+        try {
+            const { credentialId } = req.body;
+            if (!credentialId) {
+                return res.status(400).json({ error: 'Missing credential ID' });
+            }
+
+            await bcService.revokeCredential(credentialId);
+            console.log(`⛔ Credential revoked via API: ${credentialId}`);
+
+            res.json({ status: 'success', message: 'Credential revoked successfully' });
+        } catch (e) {
+            console.error('❌ Error revoking credential: ', e);
+            res.status(500).json({ error: 'Error revoking credential in Blockchain' });
+        }
+    });
+
+    router.get('/revocations', authenticateToken, async (req: Request, res: Response) => {
+        try {
+            const list = await bcService.getRevocationList();
+            res.json(list);
+        } catch (error) {
+            console.error('❌ Error obtaining revocation list:', error);
+            res.status(500).json({ error: 'Blockchain Error' });
+        }
+    });
 
     return router;
 }
