@@ -111,7 +111,7 @@ async function main() {
     // --- INTERACTIVE MENU ---
     console.log('Select the type of license to issue:')
     console.log('  1. Drone (Long-term - 5y)')
-    console.log('  2. Server (Short-lived - 24h)')
+    console.log('  2. Server (Short-lived - 24h (test: 5y))')
 
     const choice = await openTerminal('\n👉 Enter option (1 or 2): ')
 
@@ -178,7 +178,9 @@ async function main() {
       };
       // Servers get a 24-hour credential
       const expiry = new Date(now);
-      expiry.setHours(now.getHours() + 24);
+      // expiry.setHours(now.getHours() + 24); 
+      // For testing purposes, we set a longer expiration time.
+      expiry.setFullYear(now.getFullYear() + 5);
       credentialDocument.expirationDate = expiry.toISOString();
     }
 

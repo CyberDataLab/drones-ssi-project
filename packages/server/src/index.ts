@@ -7,6 +7,7 @@ import { CONFIG } from './config/env';
 import { BlockchainService } from './services/blockchain';
 import { SSIService } from './services/ssi';
 import { setupRoutes } from './rest/api';
+import { setupSwagger } from './config/swagger';
 
 async function initializeUsers() {
   if (fs.existsSync(CONFIG.USER_FILE) && JSON.parse(fs.readFileSync(CONFIG.USER_FILE, 'utf-8')).length > 0) return;
@@ -42,6 +43,7 @@ async function startServer() {
 
   // Mount Routes
   app.use('/', setupRoutes(bcService, ssiService));
+  setupSwagger(app);
 
   const httpsOptions = {
     key: fs.readFileSync(CONFIG.SSL_KEY),
@@ -51,6 +53,7 @@ async function startServer() {
   https.createServer(httpsOptions, app).listen(CONFIG.PORT, '0.0.0.0', () => {
     console.log(`\n🔒 Server available on port ${CONFIG.PORT}`);
     console.log(`   ➜ Dashboard: https://localhost:${CONFIG.PORT}`);
+    console.log(`   ➜ OpenAPI Docs:  https://localhost:${CONFIG.PORT}/api-docs`);
   });
 }
 

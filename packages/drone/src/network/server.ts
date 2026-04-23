@@ -65,7 +65,7 @@ export async function registerInDirectory(agent: any, droneDID: string, document
     } catch (e: any) {
         droneState.isConnectedToServer = false;
         droneState.serverLicenseValidUntil = null;
-        console.log(`\n❌ Error registering in directory, will retry in ${config.RETRY_REGISTER_INTERVAL} ms...`);
+        console.log(`\n❌ Error registering in directory, will retry in ${config.RETRY_REGISTER_INTERVAL} ms.... Error: ${e.message}`);
 
         setTimeout(() => registerInDirectory(agent, droneDID, documentLoader), config.RETRY_REGISTER_INTERVAL);
     }
