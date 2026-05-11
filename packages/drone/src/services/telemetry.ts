@@ -4,6 +4,42 @@ import { registerInDirectory } from "../network/server";
 import * as https from "https";
 
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+export let p2pTelemetryCache: any[] = [];
+
+
+/**
+ * Adds a signed Verifiable Credential received from a peer into the local cache.
+ */
+export function addP2PTelemetryToCache(signedPeerTelemetry: any) {
+    p2pTelemetryCache.push(signedPeerTelemetry);
+    console.log(`📥 [P2P Cache] Stored telemetry from peer. Total items in cache: ${p2pTelemetryCache.length}`);
+}
+
+/**
+ * Takes raw telemetry data and signs it using the drone's DID, creating a Verifiable Credential.
+ */
+async function signTelemetryAsVC(agent: any, droneDID: string, rawData: any, license: any): Promise<any> {
+    try {
+        const vc = await agent.createVerifiableCredential({
+            credential: {
+                issuer: { id: droneDID },
+                issuanceDate: new Date().toISOString(),
+                type: ['VerifiableCredential', 'DroneTelemetryCredential'],
+                credentialSubject: {
+                    id: droneDID, // The drone that generated the data
+                    telemetry: rawData,
+                    droneLicense: license // We attach the BBS+ license to prove authorization
+                }
+            },
+            proofFormat: 'jwt',
+        });
+        return vc;
+    } catch (error) {
+        console.error("❌ Error signing telemetry VC:", error);
+        throw error;
+    }
+}
+
 
 export function startTelemetryLoop(agent: any, droneDID: string, serverDID: string, myBbsCredential: any, documentLoader: any) {
     setInterval(async () => {
@@ -17,8 +53,8 @@ export function startTelemetryLoop(agent: any, droneDID: string, serverDID: stri
             timestamp: new Date().toISOString(),
             verifiableCredential: [myBbsCredential],
         };
-
-        droneState.telemetryBuffer.push(metric);
+        const signedMetricVC = await signTelemetryAsVC(agent, droneDID, metric, myBbsCredential);
+        droneState.telemetryBuffer.push(signedMetricVC);
 
         if (droneState.serverLicenseValidUntil && new Date() > droneState.serverLicenseValidUntil) {
             console.log(`\n🚨 ALERT: Server license EXPIRED at ${droneState.serverLicenseValidUntil.toLocaleString()}!`);
@@ -36,17 +72,25 @@ export function startTelemetryLoop(agent: any, droneDID: string, serverDID: stri
         try {
             while (droneState.telemetryBuffer.length > 0) {
                 const item = droneState.telemetryBuffer[0];
+
+                const relayedDataToSync = [...p2pTelemetryCache];
+
+                const combinedPayload = {
+                    ownTelemetry: item,
+                    relayedTelemetry: relayedDataToSync
+                };
+
                 const message = {
                     id: "msg-" + Date.now(),
                     type: "https://didcomm.org/drone-metrics/1.0/update",
                     from: droneDID,
                     to: [serverDID],
-                    body: item,
+                    body: combinedPayload,
                 };
 
                 const packedServer = await agent.packDIDCommMessage({ packing: "authcrypt", message });
 
-                console.log(`📡 Sending telemetry to server: Altitude ${item.altitude}m, Battery ${item.battery}%...`);
+                console.log(`📡 Sending telemetry to server: Altitude ${metric.altitude}m, Battery ${metric.battery}%...`);
 
                 const response = await fetch(`https://${config.SERVER_IP}:3000/messaging`, {
                     method: "POST",
@@ -57,7 +101,9 @@ export function startTelemetryLoop(agent: any, droneDID: string, serverDID: stri
 
                 if (response.ok) {
                     droneState.telemetryBuffer.shift();
-                    console.log(`✅ Telemetry sent (Alt:${item.altitude}m, Bat:${item.battery}%). Remaining buffer: ${droneState.telemetryBuffer.length}`);
+                    // Remove the successfully sent relayed data from the P2P cache
+                    p2pTelemetryCache = p2pTelemetryCache.filter(vc => !relayedDataToSync.includes(vc));
+                    console.log(`✅ Telemetry sent (Alt:${metric.altitude}m, Bat:${metric.battery}%). Remaining buffer: ${droneState.telemetryBuffer.length}`);
 
                 } else {
                     throw new Error("Failed to send telemetry: " + response.statusText);
@@ -89,6 +135,9 @@ export function startP2PTelemetryLoop(agent: any, droneDID: string) {
             timestamp: new Date().toISOString()
         };
 
+        // We sign our data before sending it to our peers, so they can prove we sent it.
+        const signedP2PData = await signTelemetryAsVC(agent, droneDID, currentFlightData, null);
+
         for (const [peerId, peer] of droneState.knownPeers.entries()) {
             if (peer.status === "fully_authenticated" && peer.did) {
                 try {
@@ -97,7 +146,7 @@ export function startP2PTelemetryLoop(agent: any, droneDID: string) {
                         type: 'https://didcomm.org/drone-p2p/1.0/telemetry',
                         from: droneDID,
                         to: [peer.did],
-                        body: currentFlightData
+                        body: signedP2PData
                     };
 
                     const packedP2P = await agent.packDIDCommMessage({ packing: 'authcrypt', message: p2pMessage });

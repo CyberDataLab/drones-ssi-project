@@ -59,39 +59,89 @@ export function setupRoutes(bcService: BlockchainService, ssiService: SSIService
     // --- DIDComm Messaging Route ---
     router.post('/messaging', async (req: Request, res: Response) => {
         try {
-            console.log('📩 Receiving DIDComm message...')
+            console.log('\n📩 Receiving DIDComm message (Store & Forward package)...');
+
 
             const unpacked = await ssiService.unpackMessage(req.body);
-            const { from: droneDid, body } = unpacked.message;
-            const credentials = body.verifiableCredential;
+            const { from: relayerDid, body } = unpacked.message;
+            const { ownTelemetry, relayedTelemetry = [] } = body;
 
-            if (!credentials?.length) return res.status(401).send('No credentials provided');
+            const allTelemetryVCs: any[] = [];
+            if (ownTelemetry) allTelemetryVCs.push(ownTelemetry);
+            if (Array.isArray(relayedTelemetry)) allTelemetryVCs.push(...relayedTelemetry);
 
-            const targetCredential = credentials[0];
-            const verificationResult = await ssiService.verifyCredential(targetCredential);
-
-            if (!verificationResult.verified) {
-                return res.status(400).json({ error: 'invalid_credential', message: 'Verification failed.' });
+            if (allTelemetryVCs.length === 0) {
+                return res.status(400).send('No telemetry data found in the package');
             }
 
-            if (targetCredential.credentialSubject?.id !== droneDid) {
-                return res.status(403).json({ error: 'identity_mismatch', message: 'Credential does not belong to sender.' });
+            console.log(`📦 Unpacked package from ${relayerDid}. Contains ${allTelemetryVCs.length} signed records.`);
+
+            let processedCount = 0;
+
+            for (const vc of allTelemetryVCs) {
+                try {
+
+                    const verificationResult = await ssiService.verifyCredential(vc);
+                    if (!verificationResult.verified) {
+                        console.warn(`⚠️ Skipping VC: Invalid signature from issuer ${vc.issuer?.id}`);
+                        // --- DIAGNOSTIC TOOL: Print the exact cryptographic error ---
+                        console.error(`🔍 EXACT VERIFICATION ERROR:`, JSON.stringify(verificationResult.error, null, 2));
+
+                        // --- DIAGNOSTIC TOOL: Check for Raspberry Pi Time Skew ---
+                        const droneTime = new Date(vc.issuanceDate).getTime();
+                        const serverTime = Date.now();
+                        const timeDifferenceSeconds = (droneTime - serverTime) / 1000;
+
+                        console.log(`⏱️ Drone Clock:  ${new Date(droneTime).toISOString()}`);
+                        console.log(`⏱️ Server Clock: ${new Date(serverTime).toISOString()}`);
+
+                        if (timeDifferenceSeconds > 0) {
+                            console.error(`🚨 HARDWARE WARNING: The Drone's clock is ${timeDifferenceSeconds} seconds IN THE FUTURE compared to the server. Veramo blocks future JWTs!`);
+                        }
+                    }
+                    const originalGeneratorDid = vc.credentialSubject?.id;
+                    const telemetryData = vc.credentialSubject?.telemetry;
+                    const droneLicense = vc.credentialSubject?.droneLicense;
+
+                    if (!originalGeneratorDid || !telemetryData) {
+                        console.warn(`⚠️ Skipping VC: Missing subject ID or telemetry data`);
+                        continue;
+                    }
+
+                    if (droneLicense && droneLicense.id) {
+                        const isRevoked = await bcService.isRevoked(droneLicense.id);
+                        if (isRevoked) {
+                            console.warn(`⛔ Skipping VC: The license ${droneLicense.id} belonging to ${originalGeneratorDid} is REVOKED.`);
+                            continue;
+                        }
+                    }
+
+                    const { battery = 0, altitude = 0, temperature = 0, temp = 0, timestamp = new Date().toISOString() } = telemetryData;
+                    const tempValue = temperature || temp;
+
+                    fs.appendFileSync(CONFIG.DATASET_FILE, `${timestamp},${originalGeneratorDid},${battery},${altitude},${tempValue}\n`);
+
+                    const uniqueTxId = `flight-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+                    // Convert the full Verifiable Credential to a string to store it immutably
+                    const stringifiedVC = JSON.stringify(vc);
+
+                    // Write the Cryptographic Proof to Hyperledger Fabric
+                    await bcService.saveTelemetryVC(uniqueTxId, originalGeneratorDid, stringifiedVC);
+                    processedCount++;
+                    console.log(`✅ Processed telemetry from ${originalGeneratorDid}. Data saved to ledger with TxID: ${uniqueTxId}. Battery: ${battery}%, Altitude: ${altitude}m, Temperature: ${tempValue}°C`);
+                } catch (vcError) {
+                    console.error(`❌ Error processing an individual VC:`, vcError);
+                    // We catch inner errors so one bad VC doesn't reject the valid ones in the batch
+                }
             }
 
-            const isRevoked = await bcService.isRevoked(targetCredential.id);
-            if (isRevoked) return res.status(400).json({ error: 'revoked_credential' });
+            console.log(`✅ Package processing complete. Saved ${processedCount}/${allTelemetryVCs.length} valid records to Ledger.`);
+            res.json({ status: 'success', message: `Data verified and saved. Processed ${processedCount}/${allTelemetryVCs.length} records.` });
 
-            // Save to CSV & Blockchain
-            const { battery = 0, altitude = 0, temperature = 0, temp = 0, timestamp = new Date().toISOString() } = body;
-            const tempValue = temperature || temp;
-
-            fs.appendFileSync(CONFIG.DATASET_FILE, `${timestamp},${droneDid},${battery},${altitude},${tempValue}\n`);
-            await bcService.createTelemetry(`flight-${Date.now()}`, timestamp, droneDid, battery, altitude, tempValue);
-
-            res.json({ status: 'success', message: 'Data verified and saved' });
         } catch (error) {
-            console.error('❌ Error processing message:', error);
-            res.status(500).send('Internal Server Error');
+            console.error('❌ Error processing DIDComm envelope:', error);
+            res.status(500).send('Internal Server Error processing secure envelope');
         }
     });
 
@@ -111,13 +161,62 @@ export function setupRoutes(bcService: BlockchainService, ssiService: SSIService
         res.status(400).send('Invalid action.');
     });
 
+    // router.get('/history/:did', authenticateToken, async (req: Request, res: Response) => {
+    //     try {
+    //         const didParam = req.params.did as string;
+    //         const cleanDid = decodeURIComponent(didParam);
+    //         const data = await bcService.getTelemetryByDid(cleanDid);
+
+    //         res.json(JSON.parse(data));
+    //     } catch (error) {
+    //         console.error('❌ Error obtaining telemetry data:', error);
+    //         res.status(500).send({ error: 'Error obtaining telemetry data from Blockchain' });
+    //     }
+    // });
+
     router.get('/history/:did', authenticateToken, async (req: Request, res: Response) => {
         try {
             const didParam = req.params.did as string;
             const cleanDid = decodeURIComponent(didParam);
-            const data = await bcService.getTelemetryByDid(cleanDid);
+            const rawBlockchainData = await bcService.getTelemetryByDid(cleanDid);
 
-            res.json(JSON.parse(data));
+            const ledgerRecords = JSON.parse(rawBlockchainData);
+
+            const formattedHistory = ledgerRecords.map((record: any) => {
+                try {
+                    let parsedVC = record.vc;
+                    if (typeof record.vc === 'string') {
+                        parsedVC = JSON.parse(record.vc);
+                    }
+
+                    const telemetryData = parsedVC?.credentialSubject?.telemetry;
+
+                    // Return a clean, flat object that is easy to show on a screen/frontend
+                    return {
+                        droneDid: record.droneDid,
+                        txId: record.txId || record.id,
+                        timestamp: telemetryData?.timestamp || record.timestamp,
+                        battery: telemetryData?.battery,
+                        altitude: telemetryData?.altitude,
+                        temperature: telemetryData?.temperature || telemetryData?.temp,
+                        cryptographicallyVerified: true // A flag to show the UI this data comes from a VC
+                    };
+                } catch (parseError) {
+                    console.warn(`⚠️ Warning: Could not parse VC for transaction ${record.txId}`);
+                    // Fallback in case there is old data without VCs in the ledger
+                    return {
+                        txId: record.txId || record.id,
+                        timestamp: record.timestamp,
+                        battery: record.battery,
+                        altitude: record.altitude,
+                        temperature: record.temperature,
+                        cryptographicallyVerified: false
+                    };
+                }
+            });
+
+            res.json(formattedHistory);
+
         } catch (error) {
             console.error('❌ Error obtaining telemetry data:', error);
             res.status(500).send({ error: 'Error obtaining telemetry data from Blockchain' });

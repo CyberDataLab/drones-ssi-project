@@ -7,6 +7,8 @@ import { droneState } from "../core/state";
 import { verify, purposes } from "jsonld-signatures";
 import { BbsBlsSignature2020, BbsBlsSignatureProof2020 } from "@mattrglobal/jsonld-signatures-bbs";
 
+import { addP2PTelemetryToCache } from "../services/telemetry";
+
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 export function getLocalIP() {
@@ -85,16 +87,11 @@ export function startExpressServer(agent: any, droneDID: string, myBbsCredential
                 const unpacked = await agent.unpackDIDCommMessage({ message: rawMessageString });
                 const decryptedMsg = unpacked.message;
 
-                if (decryptedMsg.type === 'https://didcomm.org/drone-p2p/1.0/telemetry') {
-                    const { altitude, battery } = decryptedMsg.body;
-                    console.log(`\n🛡️ [SECURE P2P] Telemetry from ${decryptedMsg.from}`);
-                    console.log(`   ➜ Peer Altitude: ${altitude}m | Battery: ${battery}%`);
-                    return res.status(200).send('Secure Telemetry Processed');
-                }
-
-                if (decryptedMsg.type === "https://didcomm.org/drone-p2p/1.0/identity-reveal") {
-
-                    console.log(`👤 Received identity reveal from ${message.from}`);
+                // ---------------------------------------------------------
+                // HANDSHAKE STEP 2: Drone A receives Drone B's real identity
+                // ---------------------------------------------------------
+                if (decryptedMsg.type === "https://didcomm.org/drone-p2p/1.0/identity-reveal-step1") {
+                    console.log(`👤 [Step 2] Received real identity from peer. Verifying...`);
 
                     const verificationResult = await verify(decryptedMsg.body.credential, {
                         suite: new BbsBlsSignature2020(),
@@ -105,23 +102,86 @@ export function startExpressServer(agent: any, droneDID: string, myBbsCredential
                     if (verificationResult.verified) {
                         const senderIp = req.ip?.includes("::ffff:") ? req.ip.split("::ffff:")[1] : (req.ip || "127.0.0.1");
                         const peerId = `${senderIp}:${decryptedMsg.body.replyPort}`;
+
+                        // Drone A now trusts Drone B
                         droneState.knownPeers.set(peerId, {
                             ip: senderIp,
                             port: decryptedMsg.body.replyPort,
                             did: decryptedMsg.from,
                             status: "fully_authenticated"
                         });
-                        console.log(`🤝 Mutual Auth Complete with ${decryptedMsg.from}!`);
-                        return res.status(200).send('Identity Accepted');
+
+                        console.log(`✅ Peer verified. Revealing my real identity to ${decryptedMsg.from}...`);
+
+                        // Now Drone A safely reveals its real identity to Drone B
+                        const identityMessage = {
+                            type: "https://didcomm.org/drone-p2p/1.0/identity-reveal-step2",
+                            from: droneDID, // My real DID
+                            to: [decryptedMsg.from], // Their real DID
+                            body: { credential: myBbsCredential, replyPort: config.P2P_PORT },
+                        };
+
+                        const packedIdentity = await agent.packDIDCommMessage({ packing: 'authcrypt', message: identityMessage });
+                        fetch(`http://${senderIp}:${decryptedMsg.body.replyPort}/messaging`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: packedIdentity.message,
+                        }).catch(() => { });
+
+                        return res.status(200).send('Identity Reveal Step 1 Accepted');
                     }
                 }
+
+                // ---------------------------------------------------------
+                // HANDSHAKE STEP 3: Drone B receives Drone A's real identity
+                // ---------------------------------------------------------
+                if (decryptedMsg.type === "https://didcomm.org/drone-p2p/1.0/identity-reveal-step2") {
+                    console.log(`🤝 [Step 3] Received real identity from challenge initiator!`);
+
+                    const verificationResult = await verify(decryptedMsg.body.credential, {
+                        suite: new BbsBlsSignature2020(),
+                        purpose: new purposes.AssertionProofPurpose(),
+                        documentLoader
+                    });
+
+                    if (verificationResult.verified) {
+                        const senderIp = req.ip?.includes("::ffff:") ? req.ip.split("::ffff:")[1] : (req.ip || "127.0.0.1");
+                        const peerId = `${senderIp}:${decryptedMsg.body.replyPort}`;
+
+                        // Drone B updates the state with Drone A's REAL DID
+                        droneState.knownPeers.set(peerId, {
+                            ip: senderIp,
+                            port: decryptedMsg.body.replyPort,
+                            did: decryptedMsg.from, // We overwrite the ephemeral DID with the real one
+                            status: "fully_authenticated"
+                        });
+                        console.log(`🔗 Mutual Auth Complete with ${decryptedMsg.from}! P2P Telemetry enabled.`);
+                        return res.status(200).send('Handshake Complete');
+                    }
+                }
+
+                // --- TELEMETRY ---
+                if (decryptedMsg.type === 'https://didcomm.org/drone-p2p/1.0/telemetry') {
+                    const peerSignedVC = decryptedMsg.body;
+                    const telemetryData = peerSignedVC.credentialSubject?.telemetry;
+
+                    console.log(`\n🛡️ [SECURE P2P] Telemetry VC received from ${decryptedMsg.from}`);
+                    if (telemetryData) {
+                        console.log(`   ➜ Peer Altitude: ${telemetryData.altitude}m | Battery: ${telemetryData.battery}%`);
+                    }
+                    addP2PTelemetryToCache(peerSignedVC);
+                    return res.status(200).send('Secure Telemetry Processed');
+                }
+
             } catch (e) {
                 console.error(`❌ Error unpacking/authenticating message: ${e}`);
                 return res.status(400).send('Invalid encrypted message');
             }
         }
 
-        // --- PLAIN TEXT ZKP CHALLENGE ---
+        // ---------------------------------------------------------
+        // HANDSHAKE STEP 1: Drone B receives Anonymous ZKP Challenge
+        // ---------------------------------------------------------
         if (message.type === "https://didcomm.org/drone-metrics/1.0/zkp-challenge") {
             try {
                 const verificationResult = await verify(message.body.zkp, {
@@ -133,15 +193,21 @@ export function startExpressServer(agent: any, droneDID: string, myBbsCredential
                 if (verificationResult.verified) {
                     const senderIp = req.ip?.includes("::ffff:") ? req.ip.split("::ffff:")[1] : (req.ip || "127.0.0.1");
                     const peerId = `${senderIp}:${message.body.replyPort}`;
+
+                    // We save them temporarily without a real DID
                     droneState.knownPeers.set(peerId, {
                         ip: senderIp,
                         port: message.body.replyPort,
-                        status: "zkp_verified"
+                        status: "zkp_verified_pending_real_id"
                     });
 
+                    console.log(`👀 Valid Anonymous ZKP received. Replying to ephemeral DID: ${message.from}`);
+
+                    // Drone B sends its REAL identity to Drone A's EPHEMERAL identity
                     const identityMessage = {
-                        type: "https://didcomm.org/drone-p2p/1.0/identity-reveal",
+                        type: "https://didcomm.org/drone-p2p/1.0/identity-reveal-step1",
                         from: droneDID,
+                        to: [message.from],
                         body: {
                             credential: myBbsCredential,
                             replyPort: config.P2P_PORT
@@ -155,7 +221,7 @@ export function startExpressServer(agent: any, droneDID: string, myBbsCredential
                         body: packedIdentity.message,
                     }).catch(() => { });
 
-                    return res.status(200).send("ZKP verified");
+                    return res.status(200).send("ZKP verified, identity sent");
                 }
             } catch (e) {
                 return res.status(500).send("ZKP verification failed");

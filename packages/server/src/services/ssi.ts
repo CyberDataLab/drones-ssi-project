@@ -97,11 +97,13 @@ export class SSIService {
         return await this.agent.unpackDIDCommMessage({ message: encryptedMessage });
     }
 
-    async verifyCredential(credential: any) {
-        return await verify(credential, {
-            suite: new BbsBlsSignature2020(),
-            purpose: new purposes.AssertionProofPurpose(),
-            documentLoader: this.documentLoader
-        });
+    async verifyCredential(credential: any): Promise<{ verified: boolean, error?: any }> {
+        try {
+            const result = await this.agent.verifyCredential({ credential });
+            return result;
+        } catch (error) {
+            console.error("[SSI] ❌ Exception thrown during VC verification:", error);
+            return { verified: false, error };
+        }
     }
 }

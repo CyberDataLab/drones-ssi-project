@@ -72,23 +72,21 @@ export class BlockchainService {
         }
     }
 
-    public async createTelemetry(txId: string, timestamp: string, droneDid: string, battery: number, altitude: number, temperature: number) {
+    public async saveTelemetryVC(txId: string, droneDid: string, vcString: string) {
         if (!this.contract) throw new Error('Contract not initialized');
 
         try {
-            console.log(`⚡ Attempting to submitTransaction for: ${txId}`);
+            console.log(`⚡ Attempting to submitTransaction (SaveTelemetryVC) for: ${txId}`);
 
+            // Llamamos al Smart Contract pasándole la credencial criptográfica entera
             await this.contract.submitTransaction(
-                'CreateTelemetry',
+                'SaveTelemetryVC',
                 txId,
-                timestamp,
                 droneDid,
-                battery.toString(),
-                altitude.toString(),
-                temperature.toString()
+                vcString
             );
 
-            console.log('✅ Transaction successfully written to Ledger');
+            console.log('✅ Transaction (VC) successfully written to Ledger');
         } catch (error: any) {
             console.error('❌ Detailed error from Fabric Gateway:');
             if (error.details && error.details.length > 0) {

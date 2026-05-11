@@ -3,7 +3,7 @@ import { config } from "../config/env";
 import { droneState } from "../core/state";
 import { deriveZkpPresentation } from "../services/zkp-engine";
 
-export function startUDPRadar(myBbsCredential: any, documentLoader: any) {
+export function startUDPRadar(agent: any, myBbsCredential: any, documentLoader: any) {
     const udpSocket = dgram.createSocket({ type: "udp4", reuseAddr: true });
 
     udpSocket.on("listening", () => {
@@ -26,7 +26,7 @@ export function startUDPRadar(myBbsCredential: any, documentLoader: any) {
                         port: message.p2pPort,
                         status: "discovered"
                     });
-                    initiateZkpChallenge(rinfo.address, message.p2pPort, myBbsCredential, documentLoader);
+                    initiateZkpChallenge(agent, rinfo.address, message.p2pPort, myBbsCredential, documentLoader);
                 }
             }
         } catch (e) { }
@@ -45,13 +45,17 @@ export function startUDPRadar(myBbsCredential: any, documentLoader: any) {
     }, config.BROADCAST_BEACON_INTERVAL);
 }
 
-async function initiateZkpChallenge(peerIp: string, peerPort: number, myBbsCredential: any, documentLoader: any) {
+async function initiateZkpChallenge(agent: any, peerIp: string, peerPort: number, myBbsCredential: any, documentLoader: any) {
 
     console.log(`🔐 Initiating ZKP challenge with peer at ${peerIp}:${peerPort}`);
 
     try {
         const zkp = await deriveZkpPresentation(myBbsCredential, documentLoader);
-        const ephemeralDid = `did:key:ephemeral-${Date.now()}`;
+        const ephemeralIdentity = await agent.didManagerCreate({ provider: 'did:key' });
+        const ephemeralDid = ephemeralIdentity.did;
+
+        console.log(`🔐 Generated ephemeral DID (${ephemeralDid}) to hide real identity during challenge.`);
+
         const challengeMessage = {
             type: "https://didcomm.org/drone-metrics/1.0/zkp-challenge",
             from: ephemeralDid,

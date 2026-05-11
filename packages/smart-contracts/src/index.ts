@@ -2,7 +2,7 @@ import { Context, Contract, Info, Returns, Transaction } from 'fabric-contract-a
 import stringify from 'json-stringify-deterministic';
 import sortKeysRecursive from 'sort-keys-recursive';
 
-@Info({title: 'DroneTelemetry', description: 'Smart Contract for managing drone telemetry data and registry'})
+@Info({ title: 'DroneTelemetry', description: 'Smart Contract for managing drone telemetry data and registry' })
 export class DroneContract extends Contract {
 
     @Transaction()
@@ -32,13 +32,13 @@ export class DroneContract extends Contract {
      */
     @Transaction()
     public async CreateTelemetry(ctx: Context, txId: string, timestamp: string, droneDid: string, battery: number, altitude: number, temperature: number): Promise<void> {
-        const recordId = txId; 
+        const recordId = txId;
         const blockchainTxId = ctx.stub.getTxID();
 
         const telemetry = {
             docType: 'telemetry',
-            id: recordId,            
-            txId: blockchainTxId,    
+            id: recordId,
+            txId: blockchainTxId,
             timestamp: timestamp,
             droneDid: droneDid,
             battery: battery,
@@ -49,6 +49,22 @@ export class DroneContract extends Contract {
         await ctx.stub.putState(recordId, Buffer.from(stringify(sortKeysRecursive(telemetry))));
     }
 
+    @Transaction()
+    public async SaveTelemetryVC(ctx: Context, txId: string, droneDid: string, vcString: string): Promise<void> {
+        const recordId = txId;
+        const blockchainTxId = ctx.stub.getTxID();
+
+        const telemetryRecord = {
+            docType: 'telemetry',
+            id: recordId,
+            txId: blockchainTxId,
+            droneDid: droneDid,
+            vc: vcString
+        };
+
+        await ctx.stub.putState(txId, Buffer.from(stringify(sortKeysRecursive(telemetryRecord))));
+        console.info(`✅ Telemetry VC saved with txId: ${txId}`);
+    }
     /**
      * 
      * @param ctx 
@@ -75,7 +91,7 @@ export class DroneContract extends Contract {
         const allResults = [];
         const iterator = await ctx.stub.getStateByRange('', '\uFFFF');
         let result = await iterator.next();
-        
+
         while (!result.done) {
             const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
             try {
@@ -101,7 +117,7 @@ export class DroneContract extends Contract {
         const allResults = [];
         const iterator = await ctx.stub.getStateByRange('', '\uFFFF');
         let result = await iterator.next();
-        
+
         while (!result.done) {
             const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
             let record;
@@ -109,7 +125,7 @@ export class DroneContract extends Contract {
                 record = JSON.parse(strValue);
             } catch (err) {
                 console.log(err);
-                record = strValue; 
+                record = strValue;
             }
 
             if (typeof record === 'object' && record.droneDid === droneDid && record.docType === 'telemetry') {
@@ -142,13 +158,13 @@ export class DroneContract extends Contract {
      */
     @Transaction()
     public async RegisterDrone(ctx: Context, droneDid: string, friendlyName: string, timestamp: string): Promise<void> {
-        const key = droneDid; 
+        const key = droneDid;
         const blockchainTxId = ctx.stub.getTxID();
         const droneEntry = {
             docType: 'drone_registry',
-            txId: blockchainTxId,   
-            timestamp: timestamp, 
-            droneDid: droneDid,     
+            txId: blockchainTxId,
+            timestamp: timestamp,
+            droneDid: droneDid,
             name: friendlyName,
             battery: 0,
             altitude: 0,
@@ -168,7 +184,7 @@ export class DroneContract extends Contract {
     @Returns('string')
     public async GetRegisteredDrones(ctx: Context): Promise<string> {
         const allDrones = [];
-        const iterator = await ctx.stub.getStateByRange('', '\uFFFF'); 
+        const iterator = await ctx.stub.getStateByRange('', '\uFFFF');
         let result = await iterator.next();
 
         while (!result.done) {
@@ -194,7 +210,7 @@ export class DroneContract extends Contract {
     @Transaction(false)
     @Returns('string')
     public async GetAllDronesInLedger(ctx: Context): Promise<string> {
-        const droneMap = new Map<string, string>(); 
+        const droneMap = new Map<string, string>();
         const iterator = await ctx.stub.getStateByRange('', '');
         let result = await iterator.next();
 
@@ -212,7 +228,7 @@ export class DroneContract extends Contract {
                     }
                 }
 
-            } catch (err) {}
+            } catch (err) { }
             result = await iterator.next();
         }
 
@@ -227,11 +243,11 @@ export class DroneContract extends Contract {
     @Transaction()
     public async RevokeCredential(ctx: Context, credentialId: string, timestamp: string): Promise<void> {
         const revocationKey = `REVOC_${credentialId}`;
-        
+
         const revocationRecord = {
             docType: 'revocation_list',
             credentialId: credentialId,
-            revokedAt: timestamp, 
+            revokedAt: timestamp,
             reason: 'Administrative / Theft / Compromise' // In a real implementation, you might want to allow specifying the reason for revocation
         };
 
@@ -273,7 +289,7 @@ export class DroneContract extends Contract {
                 if (record.docType === 'revocation_list') {
                     allResults.push(record);
                 }
-            } catch (err) {}
+            } catch (err) { }
             result = await iterator.next();
         }
         return JSON.stringify(allResults);
@@ -281,4 +297,4 @@ export class DroneContract extends Contract {
 }
 
 // Export the contract classes as an array for use in the chaincode
-export const contracts: any[] = [ DroneContract ];
+export const contracts: any[] = [DroneContract];

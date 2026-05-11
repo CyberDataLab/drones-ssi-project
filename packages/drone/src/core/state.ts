@@ -1,7 +1,7 @@
 export interface PeerState {
     ip: string;
     port: number;
-    status: "discovered" | "zkp_verified" | "fully_authenticated";
+    status: "discovered" | "zkp_verified" | "fully_authenticated" | "zkp_verified_pending_real_id";
     did?: string;
 }
 

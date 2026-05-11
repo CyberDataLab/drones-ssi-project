@@ -21,7 +21,7 @@ async function main() {
         console.log('\n🚀 [FLY MODE] All systems Go! Starting operational systems...');
 
         startExpressServer(agent, droneDID, myBbsCredential, documentLoader);
-        startUDPRadar(myBbsCredential, documentLoader);
+        startUDPRadar(agent, myBbsCredential, documentLoader);
         registerInDirectory(agent, droneDID, documentLoader);
         startTelemetryLoop(agent, droneDID, serverDid, myBbsCredential, documentLoader);
         startP2PTelemetryLoop(agent, droneDID);
