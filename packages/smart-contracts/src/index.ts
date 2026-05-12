@@ -20,35 +20,14 @@ export class DroneContract extends Contract {
         console.log('Ledger initialized with genesis data');
     }
 
+
     /**
      * 
      * @param ctx 
      * @param txId 
-     * @param timestamp 
      * @param droneDid 
-     * @param battery 
-     * @param altitude 
-     * @param temperature 
+     * @param vcString 
      */
-    @Transaction()
-    public async CreateTelemetry(ctx: Context, txId: string, timestamp: string, droneDid: string, battery: number, altitude: number, temperature: number): Promise<void> {
-        const recordId = txId;
-        const blockchainTxId = ctx.stub.getTxID();
-
-        const telemetry = {
-            docType: 'telemetry',
-            id: recordId,
-            txId: blockchainTxId,
-            timestamp: timestamp,
-            droneDid: droneDid,
-            battery: battery,
-            altitude: altitude,
-            temperature: temperature
-        };
-
-        await ctx.stub.putState(recordId, Buffer.from(stringify(sortKeysRecursive(telemetry))));
-    }
-
     @Transaction()
     public async SaveTelemetryVC(ctx: Context, txId: string, droneDid: string, vcString: string): Promise<void> {
         const recordId = txId;
@@ -65,20 +44,7 @@ export class DroneContract extends Contract {
         await ctx.stub.putState(txId, Buffer.from(stringify(sortKeysRecursive(telemetryRecord))));
         console.info(`✅ Telemetry VC saved with txId: ${txId}`);
     }
-    /**
-     * 
-     * @param ctx 
-     * @param txId 
-     * @returns 
-     */
-    @Transaction(false)
-    public async ReadTelemetry(ctx: Context, txId: string): Promise<string> {
-        const telemetryJSON = await ctx.stub.getState(txId);
-        if (!telemetryJSON || telemetryJSON.length === 0) {
-            throw new Error(`The telemetry record ${txId} does not exist`);
-        }
-        return telemetryJSON.toString();
-    }
+
 
     /**
      * 
@@ -134,19 +100,6 @@ export class DroneContract extends Contract {
             result = await iterator.next();
         }
         return JSON.stringify(allResults);
-    }
-
-    /**
-     * 
-     * @param ctx 
-     * @param txId 
-     * @returns 
-     */
-    @Transaction(false)
-    @Returns('boolean')
-    public async TelemetryExists(ctx: Context, txId: string): Promise<boolean> {
-        const telemetryJSON = await ctx.stub.getState(txId);
-        return telemetryJSON && telemetryJSON.length > 0;
     }
 
     /**
